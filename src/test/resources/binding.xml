@@ -1,0 +1,18 @@
+<binding complexType="be.nabu.libs.types.binding.flat.Company">
+	<record separator="\n">
+		<field separator="," fixed="Company"/>
+		<field separator="," map="@name"/>
+		<field map="@unit"/>
+	</record>
+	<record separator="\n" map="employees" >
+		<field separator="," map="@id" match="[0-9]+" />
+		<field separator="," map="firstName"/>
+		<field separator="," map="lastName"/>
+		<field separator="," map="age" match="[0-9]+" canEnd="true" />
+		<field map="startDay" formatter="be.nabu.libs.types.simple.Date" format="yyyy/MM/dd"/>
+	</record>
+	<record separator="\n">
+		<field separator="," map="address" />
+		<field map="billingNumber"/>
+	</record>
+</binding>
