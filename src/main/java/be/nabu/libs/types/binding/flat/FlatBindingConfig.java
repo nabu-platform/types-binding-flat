@@ -15,6 +15,7 @@ import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlElements;
 import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlSeeAlso;
+import javax.xml.bind.annotation.XmlTransient;
 import javax.xml.namespace.QName;
 
 import be.nabu.libs.types.binding.BindingConfig;
@@ -24,6 +25,7 @@ public class FlatBindingConfig extends BindingConfig {
 	
 	private List<Fragment> children;
 	private int maxLookAhead = 1024000;
+	private String record;
 	
 	@XmlElements({
 		@XmlElement(name = "record", type = Record.class),
@@ -45,15 +47,36 @@ public class FlatBindingConfig extends BindingConfig {
 	}
 
 	/**
+	 * This contains the "root" record which can be used to indicate a specific record if you are using named ones
+	 */
+	@XmlAttribute
+	public String getRecord() {
+		return record;
+	}
+	public void setRecord(String record) {
+		this.record = record;
+	}
+
+	public FlatBindingConfig clone() {
+		FlatBindingConfig config = new FlatBindingConfig();
+		config.setChildren(getChildren());
+		config.setComplexType(getComplexType());
+		config.setMaxLookAhead(getMaxLookAhead());
+		config.setRecord(getRecord());
+		return config;
+	}
+	
+	/**
 	 * The "child separator" thing is too hard to do for two reasons:
 	 * - because of the recursive parsing and the fact that the fragments have no link back to their parent, it is hard to ask for
 	 * - last elements in a record probably don't need a separator, however this is hard to deduce with a generic "child separator" that is applicable to all
 	 */
 	@XmlRootElement(name = "record")
 	public static class Record extends Fragment {		
-		private List<Fragment> children;
+		private List<Fragment> children = new ArrayList<Fragment>();
 		private Integer maxOccurs;
-		private boolean allowPartial = false;
+		private Boolean allowPartial;
+		private String name, parent, complexType;
 		
 		@XmlElements({
 			@XmlElement(name = "record", type = Record.class),
@@ -77,12 +100,105 @@ public class FlatBindingConfig extends BindingConfig {
 			this.maxOccurs = maxOccurs;
 		}
 		
+		@XmlTransient
+		public boolean isPartialAllowed() {
+			return allowPartial != null && allowPartial;
+		}
+		
 		@XmlAttribute
-		public boolean isAllowPartial() {
+		public Boolean getAllowPartial() {
 			return allowPartial;
 		}
-		public void setAllowPartial(boolean allowPartial) {
+		public void setAllowPartial(Boolean allowPartial) {
 			this.allowPartial = allowPartial;
+		}
+		
+		@XmlAttribute
+		public String getName() {
+			return name;
+		}
+		public void setName(String name) {
+			this.name = name;
+		}
+		
+		@XmlAttribute
+		public String getParent() {
+			return parent;
+		}
+		public void setParent(String parent) {
+			this.parent = parent;
+		}
+		
+		@XmlAttribute
+		public String getComplexType() {
+			return complexType;
+		}
+		public void setComplexType(String complexType) {
+			this.complexType = complexType;
+		}
+		
+		public Record resolve(List<Fragment> fragments) {
+			if (getParent() == null) {
+				return this;
+			}
+			Record clone = null;
+			for (Fragment fragment : fragments) {
+				if (fragment instanceof Record) {
+					Record record = (Record) fragment;
+					if (record.getName() != null && record.getName().equals(getParent())) {
+						clone = record.resolve(fragments).clone();
+						clone.merge(this);
+						break;
+					}
+				}
+			}
+			if (clone == null) {
+				throw new IllegalArgumentException("Can not find parent " + getParent());
+			}
+			return clone;
+		}
+
+		public void merge(Record record) {
+			getChildren().addAll(record.getChildren());
+			if (getLength() == null) {
+				setLength(record.getLength());
+			}
+			if (getMaxLength() == null) {
+				setMaxLength(record.getMaxLength());
+			}
+			if (getMaxOccurs() == null) {
+				setMaxOccurs(record.getMaxOccurs());
+			}
+			if (getSeparator() == null) {
+				setSeparator(record.getSeparator());
+			}
+			if (getSeparatorLength() == null) {
+				setSeparatorLength(record.getSeparatorLength());
+			}
+			if (getAllowPartial() == null) {
+				setAllowPartial(record.getAllowPartial());
+			}
+			if (getMap() == null) {
+				setMap(record.getMap());
+			}
+			if (getComplexType() == null) {
+				setComplexType(record.getComplexType());
+			}
+		}
+		
+		public Record clone() {
+			Record record = new Record();
+			record.setAllowPartial(isPartialAllowed());
+			record.setDescription(getDescription());
+			record.setMap(getMap());
+			record.setLength(getLength());
+			record.setMaxLength(getMaxLength());
+			record.setMaxOccurs(getMaxOccurs());
+			record.setChildren(new ArrayList<Fragment>(getChildren()));
+			record.setSeparator(getSeparator());
+			record.setSeparatorLength(getSeparatorLength());
+			record.setComplexType(getComplexType());
+			return record;
 		}
 	}
 	
@@ -220,5 +336,18 @@ public class FlatBindingConfig extends BindingConfig {
 		catch (JAXBException e) {
 			throw new RuntimeException(e);
 		}
+	}
+	@Override
+	public String getComplexType() {
+		String complexType = super.getComplexType();
+		if (complexType == null && getRecord() != null) {
+			for (Fragment child : getChildren()) {
+				if (child instanceof Record && getRecord().equals(((Record) child).getName())) {
+					complexType = ((Record) child).getComplexType();
+					break;
+				}
+			}
+		}
+		return complexType;
 	}
 }

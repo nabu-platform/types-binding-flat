@@ -63,13 +63,40 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		this.charset = charset;
 	}
 	
+	public FlatBinding getNamedBinding(String name) {
+		FlatBindingConfig clone = null;
+		for (Fragment child : getConfig().getChildren()) {
+			if (child instanceof Record && name.equals(((Record) child).getName())) {
+				clone = getConfig().clone();
+				clone.setRecord(name);
+				if (((Record) child).getComplexType() != null) {
+					clone.setComplexType(((Record) child).getComplexType());
+				}
+			}
+		}
+		if (clone == null) {
+			throw new IllegalArgumentException("No binding found with the name: " + name);
+		}
+		return new FlatBinding(clone, getCharset());
+	}
+	
 	@Override
 	protected ComplexContent unmarshal(ReadableResource resource, ComplexType type, Window [] windows, Value<?>...values) throws IOException, ParseException {
 		this.resource = resource;
 		ReadableContainer<CharBuffer> readable = IOUtils.wrapReadable(resource.getReadable(), charset);
 		ComplexContent content = type.newInstance();
 		Record record = new Record();
-		record.setChildren(getConfig().getChildren());
+		if (getConfig().getRecord() != null) {
+			for (Fragment child : getConfig().getChildren()) {
+				if (child instanceof Record && getConfig().getRecord().equals(((Record) child).getName())) {
+					record.getChildren().add(child);
+					break;
+				}
+			}
+		}
+		else {
+			record.setChildren(getConfig().getChildren());
+		}
 		if (unmarshal(type.getName(), IOUtils.countReadable(readable), record, content, windows) == 0) {
 			return content;
 		}
@@ -142,6 +169,8 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				}
 				// if the child is a record and it has a map, we need to create a new complex content
 				if (child instanceof Record && child.getMap() != null) {
+					child = ((Record) child).resolve(getConfig().getChildren());
+
 					Element<?> childElement = content.getType().get(child.getMap());
 					if (childElement == null) {
 						throw new ParseException("The element " + child.getMap() + " does not exist in " + path, 0);
@@ -164,7 +193,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 						String childPath = path + "/" + childElement.getName();
 						resetAmount = unmarshal(childPath, childContainer, child, childContent, windows);
 						// if we have done a full read (0) or a partial one (> 0) and it's allowed, continue
-						if (resetAmount == 0 || (resetAmount > 0 && ((Record) child).isAllowPartial())) {
+						if (resetAmount == 0 || (resetAmount > 0 && ((Record) child).isPartialAllowed())) {
 							// if we have to reset a number of characters, do this
 							if (resetAmount > 0) {
 								markable.reset();
@@ -237,7 +266,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 						else {
 							// if partials are not allowed for this record and no records were matched, break
 							// also note that if recordCounter is larger than 0, at least one full match was done so don't break fully in that case
-							if (!((Record) fragment).isAllowPartial() && recordCounter == 0) {
+							if (!((Record) fragment).isPartialAllowed() && recordCounter == 0) {
 								if (recordCounter > 0) {
 									resetAmount = childContainer.getReadTotal() - alreadyRead;
 								}
@@ -263,7 +292,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 						markable.mark();
 						alreadyRead = childContainer.getReadTotal();
 					}
-					else if (resetAmount > 0 && child instanceof Record && ((Record) child).isAllowPartial()) {
+					else if (resetAmount > 0 && child instanceof Record && ((Record) child).isPartialAllowed()) {
 						markable.reset();
 						IOUtils.skipChars(markable, (childContainer.getReadTotal() - alreadyRead) - resetAmount);
 						resetAmount = 0;
@@ -353,7 +382,17 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 	@Override
 	public void marshal(OutputStream output, ComplexContent content, Value<?>...values) throws IOException {
 		Record record = new Record();
-		record.setChildren(getConfig().getChildren());
+		if (getConfig().getRecord() != null) {
+			for (Fragment child : getConfig().getChildren()) {
+				if (child instanceof Record && getConfig().getRecord().equals(((Record) child).getName())) {
+					record.getChildren().add(child);
+					break;
+				}
+			}
+		}
+		else {
+			record.setChildren(getConfig().getChildren());
+		}
 		marshal(IOUtils.wrapWritable(IOUtils.wrap(output), charset), record, content);
 	}
 	
@@ -459,6 +498,9 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 	private void marshalRecord(WritableContainer<CharBuffer> output, Record record, ComplexContent content) throws IOException {
 		CountingWritableContainer<CharBuffer> counted = IOUtils.countWritable(output);
 		for (Fragment childFragment : record.getChildren()) {
+			if (childFragment instanceof Record) {
+				childFragment = ((Record) childFragment).resolve(getConfig().getChildren());
+			}
 			marshal(counted, childFragment, content);
 		}
 		if (record.getLength() != null) {
