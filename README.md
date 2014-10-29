@@ -160,3 +160,58 @@ This readme is not complete yet but a few quick pointers:
 - You can set the attribute "leftAlign" where you can set (true/false) whether or not this field is left aligned. Default is false
 - You can set the attribute "canEnd" where you can set (true/false) whether this field can end the record prematurely. It is basically telling the parser that if the record ends after this field, it's ok even if more fields are defined. This can be used to define optional fields at the end.
 - The formatter field can take any formatter and once you have given it a formatter, you can define any attribute that it uses. For example the date formatter in the first example has format, timezone,...
+
+# Complex bindings
+
+By default the binding file will use the complex type defined in the root "binding" tag and all the fragments inside the binding to parse the flat file. It is however also possible to create more complex binding definitions where you can map multiple (named) records and reference other records to put them together in different ways. For example you could do:
+
+```xml
+<binding record="declaration">
+	<record name="declaration" allowPartial="true" complexType="com.example.Declaration">
+		<record parent="header" map="header"/>
+		<record parent="element" map="elements"/>
+		<record parent="footer" map="footer"/>
+	</record>
+	<record name="rejection" allowPartial="true" complexType="com.example.Declaration">
+		<record parent="header" map="header"/>
+		<record parent="rejectionElement" map="elements"/>
+		<record parent="footer" map="footer"/>
+	</record>
+ 	<record name="header" separator="\r\n">
+	    <field length="2" fixed="00"/>
+	    <field length="1" map="type"/>
+	    <field length="1" fixed="2"/>
+	    <field length="15" map="reference"/>
+	    <field length="10" map="number"/>
+	    <field length="8" map="creationDate" formatter="com.example.custom.DateMarshaller"/>
+	</record>
+ 	<record name="element" separator="\r\n">
+        <field length="2" map="type" match="[A-Z]{1}[0-9]{1}" />
+        <field length="20" map="reference"/>
+        <field length="11" map="something/this"/>
+        <field length="48" map="something/else"/>
+	</record>
+ 	<record name="rejectionElement" parent="element" separator="\r\n">
+        <field length="100" map="rejectionReasons" />
+	</record>
+	<record name="footer" separator="\r\n">
+        <field length="2" fixed="11"/>
+        <field length="1" map="type"/>
+        <field length="1" fixed="2"/>
+        <field length="15" map="reference" description="The reference..."/>
+	</record>
+</binding>
+```
+
+The binding has a "default" root record which is "declaration", so unless you specify something else, this will be used to unmarshal/marshal the data. The declaration itself consists of three elements that are referenced by name.
+
+Apart from the declaration there is also a rejection that is very similar to the original one but uses "rejectionElement" instead of "element". Note that the "rejectionElement" is actually also an extension of "element" so it will simply print out more.
+
+To get a rejection binding, you can do this:
+
+```java
+// this will use the default "declaration"
+FlatBinding binding = getFlatBinding();
+// this will use the "rejection" record:
+binding = binding.getNamedBinding("rejection");
+```
