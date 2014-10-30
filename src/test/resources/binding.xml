@@ -1,5 +1,5 @@
 <binding complexType="be.nabu.libs.types.binding.flat.Company">
-	<record separator="\n">
+	<record separator="\n" length="27">
 		<field separator="," fixed="Company"/>
 		<field separator="," map="@name"/>
 		<field map="@unit"/>

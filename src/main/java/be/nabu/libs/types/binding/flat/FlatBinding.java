@@ -158,6 +158,8 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		if (fragment instanceof Record) {
 			// need a correct offset to be able to skip later on
 			long alreadyRead = input.getReadTotal();
+			// need a correct offset to check the full length read later on
+			long initialRead = alreadyRead;
 			// mark the input so we can return to this point in case it is not the correct record
 			MarkableContainer<CharBuffer> markable = IOUtils.mark(readable);
 			markable.mark();
@@ -318,6 +320,16 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 					// the "alreadyread" is only for the valid record, it does not take into account any delimiters that are read, so make sure we take that into account
 					if (delimited.isDelimiterFound()) {
 						resetAmount -= delimited.getMatchedDelimiter().length();
+					}
+					// if the reset amount is still 0, we have confirmed the delimiter check
+					if (resetAmount == 0 && fragment.getLength() != null) {
+						long shouldHaveRead = fragment.getLength();
+						if (delimited.isDelimiterFound()) {
+							shouldHaveRead += delimited.getMatchedDelimiter().length();
+						}
+						if (shouldHaveRead != input.getReadTotal() - initialRead) {
+							throw new ParseException("There were not enough characters for the record: " + (input.getReadTotal() - initialRead) + "/" + shouldHaveRead, 0);
+						}
 					}
 				}
 				// otherwise, if we have a fixed length, double check that
@@ -518,13 +530,13 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			}
 			marshal(counted, childFragment, content);
 		}
-		if (record.getLength() != null) {
+		if (record.getSeparator() != null) {
+			output.write(IOUtils.wrap(normalizeSeparator(record.getSeparator())));
+		}
+		else if (record.getLength() != null) {
 			for (long i = counted.getWrittenTotal(); i < record.getLength(); i++) {
 				output.write(IOUtils.wrap(" "));
 			}
-		}
-		else if (record.getSeparator() != null) {
-			output.write(IOUtils.wrap(normalizeSeparator(record.getSeparator())));
 		}
 	}
 
