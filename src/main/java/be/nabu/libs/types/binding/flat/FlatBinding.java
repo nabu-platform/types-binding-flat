@@ -349,13 +349,13 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				if (field.getLength() != null) {
 					String pad = field.getPad() == null ? " " : field.getPad();
 					if (field.isLeftAlign()) {
-						while (value.startsWith(pad)) {
-							value = value.substring(pad.length());
+						while (value.endsWith(pad)) {
+							value = value.substring(0, value.length() - pad.length());
 						}
 					}
 					else {
-						while (value.endsWith(pad)) {
-							value = value.substring(0, value.length() - pad.length());
+						while (value.startsWith(pad)) {
+							value = value.substring(pad.length());
 						}
 					}
 				}
