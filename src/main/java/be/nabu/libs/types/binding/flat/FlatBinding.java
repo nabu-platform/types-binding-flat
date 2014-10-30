@@ -164,6 +164,8 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			MarkableContainer<CharBuffer> markable = IOUtils.mark(readable);
 			markable.mark();
 			
+			// check to see that it has at least one match
+			boolean hasAnyMatch = false;
 			// now that we have a limited view, we need to parse the child fragments and hope there are identifying fields that can tell us if it is ok
 			record: for (Fragment child : ((Record) fragment).getChildren()) {
 				if (eof.isEOF()) {
@@ -196,6 +198,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 						resetAmount = unmarshal(childPath, childContainer, child, childContent, windows);
 						// if we have done a full read (0) or a partial one (> 0) and it's allowed, continue
 						if (resetAmount == 0 || (resetAmount > 0 && ((Record) child).isPartialAllowed())) {
+							hasAnyMatch = true;
 							// if we have to reset a number of characters, do this
 							if (resetAmount > 0) {
 								markable.reset();
@@ -290,6 +293,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 					CountingReadableContainer<CharBuffer> childContainer = IOUtils.countReadable(markable, alreadyRead);
 					resetAmount = unmarshal(path, childContainer, child, content, windows);
 					if (resetAmount == 0) {
+						hasAnyMatch = true;
 						markable.unmark();
 						markable.mark();
 						alreadyRead = childContainer.getReadTotal();
@@ -304,6 +308,10 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 						break;
 					}
 				}
+			}
+			// if not a single match was performed, make sure it is set to -1
+			if (!hasAnyMatch) {
+				resetAmount = -1;
 			}
 			// if the reset amount is already -1, just let it bubble up
 			// if it is already positive, it doesn't matter, a reset will happen anyway
