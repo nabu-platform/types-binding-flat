@@ -345,6 +345,21 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				resetAmount = 0;
 			}
 			if (field.getMap() != null) {
+				// if it's fixed length, it might be padded
+				if (field.getLength() != null) {
+					String pad = field.getPad() == null ? " " : field.getPad();
+					if (field.isLeftAlign()) {
+						while (value.startsWith(pad)) {
+							value = value.substring(pad.length());
+						}
+					}
+					else {
+						while (value.endsWith(pad)) {
+							value = value.substring(0, value.length() - pad.length());
+						}
+					}
+				}
+				
 				Object unmarshalledValue = value;
 				if (value.isEmpty()) {
 					unmarshalledValue = null;
