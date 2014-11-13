@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import javax.xml.bind.annotation.adapters.XmlAdapter;
 import javax.xml.namespace.QName;
 
 import be.nabu.libs.converter.ConverterFactory;
@@ -387,15 +388,30 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				// check if we want to use a formatter
 				else if (field.getFormatter() != null) {
 					try {
-						Unmarshallable<?> unmarshallable = (Unmarshallable<?>) Class.forName(field.getFormatter()).newInstance();
-						List<Value<?>> values = new ArrayList<Value<?>>();
-						for (Property<?> property : unmarshallable.getSupportedProperties()) {
-							QName qname = new QName(property.getName());
-							if (field.getOtherAttributes() != null && field.getOtherAttributes().containsKey(qname)) {
-								values.add(new ValueImpl(property, converter.convert(field.getOtherAttributes().get(qname), property.getValueClass())));
+						Object formatterInstance = Class.forName(field.getFormatter()).newInstance();
+						if (formatterInstance instanceof Unmarshallable) {
+							Unmarshallable<?> unmarshallable = (Unmarshallable<?>) formatterInstance;
+							List<Value<?>> values = new ArrayList<Value<?>>();
+							for (Property<?> property : unmarshallable.getSupportedProperties()) {
+								QName qname = new QName(property.getName());
+								if (field.getOtherAttributes() != null && field.getOtherAttributes().containsKey(qname)) {
+									values.add(new ValueImpl(property, converter.convert(field.getOtherAttributes().get(qname), property.getValueClass())));
+								}
+							}
+							unmarshalledValue = unmarshallable.unmarshal(value, values.toArray(new Value[0]));
+						}
+						else if (formatterInstance instanceof XmlAdapter) {
+							XmlAdapter adapter = (XmlAdapter) formatterInstance;
+							try {
+								unmarshalledValue = adapter.unmarshal(value);
+							}
+							catch (Exception e) {
+								throw new ParseException("The formatter " + field.getFormatter() + " failed to unmarshal the value: " + e.getMessage(), 0);
 							}
 						}
-						unmarshalledValue = unmarshallable.unmarshal(value, values.toArray(new Value[0]));
+						else {
+							throw new ParseException("Unknown unmarshaller: " + field.getFormatter(), 0);
+						}
 					}
 					catch (InstantiationException e) {
 						throw new ParseException("Can not instantiate formatter " + field.getFormatter(), 0);
@@ -476,15 +492,30 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			String mappedValue = null;
 			if (object != null && field.getFormatter() != null) {
 				try {
-					Marshallable marshallable = (Marshallable<?>) Class.forName(field.getFormatter()).newInstance();
-					List<Value<?>> values = new ArrayList<Value<?>>();
-					for (Property<?> property : marshallable.getSupportedProperties()) {
-						QName qname = new QName(property.getName());
-						if (field.getOtherAttributes() != null && field.getOtherAttributes().containsKey(qname)) {
-							values.add(new ValueImpl(property, converter.convert(field.getOtherAttributes().get(qname), property.getValueClass())));
+					Object formatterInstance = Class.forName(field.getFormatter()).newInstance();
+					if (formatterInstance instanceof Marshallable) {
+						Marshallable marshallable = (Marshallable<?>) formatterInstance;
+						List<Value<?>> values = new ArrayList<Value<?>>();
+						for (Property<?> property : marshallable.getSupportedProperties()) {
+							QName qname = new QName(property.getName());
+							if (field.getOtherAttributes() != null && field.getOtherAttributes().containsKey(qname)) {
+								values.add(new ValueImpl(property, converter.convert(field.getOtherAttributes().get(qname), property.getValueClass())));
+							}
+						}
+						mappedValue = marshallable.marshal(object, values.toArray(new Value[0]));
+					}
+					else if (formatterInstance instanceof XmlAdapter) {
+						XmlAdapter adapter = (XmlAdapter) formatterInstance;
+						try {
+							mappedValue = (String) adapter.marshal(object);
+						}
+						catch (Exception e) {
+							throw new MarshalException("The formatter " + field.getFormatter() + " failed to unmarshal the value: " + e.getMessage(), e);
 						}
 					}
-					mappedValue = marshallable.marshal(object, values.toArray(new Value[0]));
+					else {
+						throw new MarshalException("Unknown marshaller: " + field.getFormatter());
+					}
 				}
 				catch (InstantiationException e) {
 					throw new MarshalException("Can not instantiate formatter " + field.getFormatter(), e);
