@@ -492,7 +492,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			String mappedValue = null;
 			if (object != null && field.getFormatter() != null) {
 				try {
-					Object formatterInstance = Class.forName(field.getFormatter()).newInstance();
+					Object formatterInstance = Thread.currentThread().getContextClassLoader().loadClass(field.getFormatter()).newInstance();
 					if (formatterInstance instanceof Marshallable) {
 						Marshallable marshallable = (Marshallable<?>) formatterInstance;
 						List<Value<?>> values = new ArrayList<Value<?>>();
