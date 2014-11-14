@@ -388,7 +388,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				// check if we want to use a formatter
 				else if (field.getFormatter() != null) {
 					try {
-						Object formatterInstance = Class.forName(field.getFormatter()).newInstance();
+						Object formatterInstance = Thread.currentThread().getContextClassLoader().loadClass(field.getFormatter()).newInstance();
 						if (formatterInstance instanceof Unmarshallable) {
 							Unmarshallable<?> unmarshallable = (Unmarshallable<?>) formatterInstance;
 							List<Value<?>> values = new ArrayList<Value<?>>();
