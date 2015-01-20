@@ -123,9 +123,11 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		ComplexContent newInstance = type.newInstance();
 		EOFReadableContainer<CharBuffer> eof = new EOFReadableContainer<CharBuffer>(marked);
 		String unmarshal = unmarshal(type.getName(), marked, eof, new CountingReadableContainerImpl<CharBuffer>(eof), record, newInstance, windows);
+		// nothing was parsed correctly
 		if (unmarshal == null) {
+			// everything is probably trailing, just remove it
 			trailing = null;
-			return null;
+			throw new ParseException("Could not parse anything: " + formatMessages(), 0);
 		}
 		else {
 			trailing = unmarshal + toString(marked);
@@ -236,7 +238,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 							if (recordCounter < minRecordAmount) {
 								// if we have parsed something, this is considered invalid
 								if (hasParsedAnything) {
-									throw new ParseException("The record " + child.getMap() + " does not have enough iterations: " + recordCounter + "/" + minRecordAmount, (int) alreadyRead);
+									throw new ParseException("The record " + child.getMap() + " does not have enough iterations: " + recordCounter + "/" + minRecordAmount + ", " + formatMessages(), (int) alreadyRead);
 								}
 								// otherwise it might just not be a match, have the parent reset
 								else {
@@ -374,20 +376,20 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				// if we get here, it is possible the record was not read to the fullest (e.g. fixed length)
 				String remainder = toString(readable);
 				if (!remainder.isEmpty()) {
-					throw new ParseException("There are dangling characters at the end of a record: '" + remainder + "'", (int) alreadyRead);
+					throw new ParseException("There are dangling characters at the end of the " + fragment + ": '" + remainder + "'", (int) alreadyRead);
 				}
 				// check any length set on the entire fragment
 				if (fragment.getLength() != null) {
 					long shouldHaveRead = fragment.getLength();
 					long hasActuallyRead = alreadyRead - initialRead;
 					if (shouldHaveRead != hasActuallyRead) {
-						throw new ParseException("There were not enough characters for the record " + fragment.getMap() + ": " + hasActuallyRead + "/" + shouldHaveRead, (int) alreadyRead);
+						throw new ParseException("There were not enough characters for the " + fragment + ": " + hasActuallyRead + "/" + shouldHaveRead, (int) alreadyRead);
 					}
 				}
 				// otherwise, if we have a fixed length, double check that
 				else if (fragment.getLength() != null) {
 					if (fragment.getLength() != alreadyRead) {
-						throw new ParseException("Record of wrong length: " +  alreadyRead + "/" + fragment.getLength(), (int) alreadyRead);
+						throw new ParseException(fragment + " of wrong length: " +  alreadyRead + "/" + fragment.getLength(), (int) alreadyRead);
 					}
 				}
 			}
@@ -693,4 +695,14 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		
 	}
 
+	private String formatMessages() {
+		StringBuilder builder = new StringBuilder();
+		for (ValidationMessage message : getMessages()) {
+			if (!builder.toString().isEmpty()) {
+				builder.append(",\n\t");
+			}
+			builder.append("[" + message.getSeverity() + ":" + message.getCode() + "] " + message.getMessage());
+		}
+		return builder.toString();
+	}
 }

@@ -38,8 +38,13 @@ public class TestFlat extends TestCase {
 		FlatBindingConfig config = FlatBindingConfig.load(Thread.currentThread().getContextClassLoader().getResource("binding.xml"));
 		FlatBinding binding = new FlatBinding(DefinedTypeResolverFactory.getInstance().getResolver(), config, Charset.forName("UTF-8"));
 		binding.setScopeMessages(true);
-		assertNull(unmarshal(binding, "flat-wrong-header.csv", Company.class));
-		System.out.println(binding.getMessages());
+		try {
+			unmarshal(binding, "flat-wrong-header.csv", Company.class);
+			fail("Should fail");
+		}
+		catch (ParseException e) {
+			System.out.println(binding.getMessages());
+		}
 	}
 	
 	public void testAge() throws IOException, ParseException {
