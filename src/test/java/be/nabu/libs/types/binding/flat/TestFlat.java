@@ -15,34 +15,110 @@ import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 
 public class TestFlat extends TestCase {
-	public void testFlatParse() throws IOException, ParseException {
+	
+	public void testWindowedParse() throws IOException, ParseException {
 		FlatBindingConfig config = FlatBindingConfig.load(Thread.currentThread().getContextClassLoader().getResource("binding.xml"));
 		FlatBinding binding = new FlatBinding(DefinedTypeResolverFactory.getInstance().getResolver(), config, Charset.forName("UTF-8"));
 		InputStream input = Thread.currentThread().getContextClassLoader().getResourceAsStream("flat-input.csv");
-		Company result = null;
+		Company result = unmarshal(binding, "flat-input.csv", Company.class);
+		validate(result);
+		ByteBuffer buffer = IOUtils.newByteBuffer();
+		binding.marshal(IOUtils.toOutputStream(buffer), new BeanInstance<Company>(result));
+		System.out.println(IOUtils.toString(IOUtils.wrapReadable(buffer, binding.getCharset())));
+	}
+	
+	public void testPlainParse() throws IOException, ParseException {
+		FlatBindingConfig config = FlatBindingConfig.load(Thread.currentThread().getContextClassLoader().getResource("binding.xml"));
+		FlatBinding binding = new FlatBinding(DefinedTypeResolverFactory.getInstance().getResolver(), config, Charset.forName("UTF-8"));
+		Company result = unmarshal(binding, "flat-input.csv", Company.class);
+		validate(result);
+	}
+	
+	public void testWrongHeader() throws IOException, ParseException {
+		FlatBindingConfig config = FlatBindingConfig.load(Thread.currentThread().getContextClassLoader().getResource("binding.xml"));
+		FlatBinding binding = new FlatBinding(DefinedTypeResolverFactory.getInstance().getResolver(), config, Charset.forName("UTF-8"));
+		binding.setScopeMessages(true);
+		assertNull(unmarshal(binding, "flat-wrong-header.csv", Company.class));
+		System.out.println(binding.getMessages());
+	}
+	
+	public void testAge() throws IOException, ParseException {
+		FlatBindingConfig config = FlatBindingConfig.load(Thread.currentThread().getContextClassLoader().getResource("binding.xml"));
+		FlatBinding binding = new FlatBinding(DefinedTypeResolverFactory.getInstance().getResolver(), config, Charset.forName("UTF-8"));
 		try {
-			Window window = new Window("company/employees", 3, 3);
-			ComplexContent content = binding.unmarshal(input, new Window [] { window });
-			result = TypeUtils.getAsBean(content, Company.class);
-			assertEquals("Nabu", result.getName());
-			assertEquals("Organizational", result.getUnit());
-			assertEquals("Nabu HQ", result.getAddress());
-			assertEquals("BE666-66-66", result.getBillingNumber());
-			assertEquals(24, result.getEmployees().size());
-			assertEquals("John1", result.getEmployees().get(1).getFirstName());
+			assertNull(unmarshal(binding, "flat-wrong-age.csv", Company.class));
+			fail("Should fail because the footer is parsed 'correctly' (there are no validators) which leaves a trailing end that is not allowed");
+		}
+		catch(ParseException e) {
+			// expected
+			System.out.println(binding.getMessages());
+		}
+	}
 
-			assertEquals(new Integer(31), result.getEmployees().get(0).getAge());
-			assertEquals(new Integer(60), result.getEmployees().get(10).getAge());
-			assertEquals(new Integer(44), result.getEmployees().get(14).getAge());
-			
-			assertEquals(new Integer(31), result.getEmployees().get(0).getAge());
-			assertEquals(new Integer(57), result.getEmployees().get(1).getAge());
+	public void testMultipleParse() throws IOException, ParseException {
+		// just parse the first company
+		FlatBindingConfig config = FlatBindingConfig.load(Thread.currentThread().getContextClassLoader().getResource("complex-binding.xml"));
+		FlatBinding binding = new FlatBinding(DefinedTypeResolverFactory.getInstance().getResolver(), config, Charset.forName("UTF-8"));
+		config.setAllowTrailing(true);
+		Company result = unmarshal(binding, "flat-multiple.csv", Company.class);
+		validate(result);
+		config.setAllowTrailing(false);
+		// trying a single parse again should fail as there is a second company behind it
+		try {
+			unmarshal(binding, "flat-multiple.csv", Company.class);
+			fail("Expecting an error");
+		}
+		catch (ParseException e) {
+			assertTrue(e.getMessage().contains("Trailing"));
+		}
+		config.setAllowTrailing(true);
+		// try the multiple parse
+		Companies companies = unmarshal(binding.getNamedBinding("companies"), "flat-multiple.csv", Companies.class);
+		assertEquals(2, companies.getCompanies().size());
+		validate(companies.getCompanies().get(0));
+		validate(companies.getCompanies().get(1));
+	}
+	
+	
+	public <T> T unmarshal(FlatBinding binding, String name, Class<T> beanType) throws IOException, ParseException {
+		return unmarshal(binding, Thread.currentThread().getContextClassLoader().getResourceAsStream(name), beanType);
+	}
+	
+	public <T> T unmarshal(FlatBinding binding, InputStream input, Class<T> beanType) throws IOException, ParseException {
+		try {
+			ComplexContent content = binding.unmarshal(input, new Window [0]);
+			return content == null ? null : TypeUtils.getAsBean(content, beanType);
 		}
 		finally {
 			input.close();
 		}
-		ByteBuffer buffer = IOUtils.newByteBuffer();
-		binding.marshal(IOUtils.toOutputStream(buffer), new BeanInstance<Company>(result));
-		System.out.println(IOUtils.toString(IOUtils.wrapReadable(buffer, binding.getCharset())));
+	}
+	
+	private void validate(Company result) {
+		validateHeader(result);
+		assertEquals(24, result.getEmployees().size());
+		assertEquals("John1", result.getEmployees().get(1).getFirstName());
+
+		assertEquals(new Integer(31), result.getEmployees().get(0).getAge());
+		assertEquals(new Integer(60), result.getEmployees().get(10).getAge());
+		assertEquals(new Integer(44), result.getEmployees().get(14).getAge());
+		
+		assertEquals(new Integer(31), result.getEmployees().get(0).getAge());
+		assertEquals(new Integer(57), result.getEmployees().get(1).getAge());
+		
+		// check that the last one is correctly reparsed
+		assertEquals(new Integer(31), result.getEmployees().get(22).getAge());
+		assertEquals(new Integer(31), result.getEmployees().get(23).getAge());
+		validateFooter(result);
+	}
+
+	private void validateHeader(Company result) {
+		assertEquals("Nabu", result.getName());
+		assertEquals("Organizational", result.getUnit());
+	}
+
+	private void validateFooter(Company result) {
+		assertEquals("Nabu HQ", result.getAddress());
+		assertEquals("BE666-66-66", result.getBillingNumber());
 	}
 }

@@ -38,22 +38,34 @@ import be.nabu.libs.types.binding.flat.FlatBindingConfig.Fragment;
 import be.nabu.libs.types.binding.flat.FlatBindingConfig.Record;
 import be.nabu.libs.types.java.BeanInstance;
 import be.nabu.libs.types.properties.MaxOccursProperty;
+import be.nabu.libs.types.properties.MinOccursProperty;
+import be.nabu.libs.validator.api.ValidationMessage;
+import be.nabu.libs.validator.api.ValidationMessage.Severity;
 import be.nabu.utils.io.IOUtils;
+import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.CharBuffer;
-import be.nabu.utils.io.api.CountingReadableContainer;
 import be.nabu.utils.io.api.CountingWritableContainer;
-import be.nabu.utils.io.api.DelimitedCharContainer;
-import be.nabu.utils.io.api.MarkableContainer;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.io.api.WritableContainer;
+import be.nabu.utils.io.containers.CountingReadableContainerImpl;
 import be.nabu.utils.io.containers.EOFReadableContainer;
+import be.nabu.utils.io.containers.LimitedMarkableContainer;
+import be.nabu.utils.io.containers.chars.BackedDelimitedCharContainer;
 
+/**
+ * This class is NOT threadsafe
+ */
 public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> {
 
 	private CollectionHandler collectionHandler = CollectionHandlerFactory.getInstance().getHandler();
 	private Converter converter = ConverterFactory.getInstance().getConverter();
-	private ReadableResource resource;
+	
 	private Charset charset;
+	private ReadableResource resource;
+	private long lookAhead = 409600;
+	
+	private boolean scopeMessages = false;
+	private List<ValidationMessage> messages = new ArrayList<ValidationMessage>();
 	
 	public FlatBinding(FlatBindingConfig config, Charset charset) {
 		this(DefinedTypeResolverFactory.getInstance().getResolver(), config, charset);
@@ -64,6 +76,10 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		this.charset = charset;
 	}
 	
+	public Charset getCharset() {
+		return charset;
+	}
+
 	public FlatBinding getNamedBinding(String name) {
 		FlatBindingConfig clone = null;
 		for (Fragment child : getConfig().getChildren()) {
@@ -78,15 +94,20 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		if (clone == null) {
 			throw new IllegalArgumentException("No binding found with the name: " + name);
 		}
-		return new FlatBinding(clone, getCharset());
+		return new FlatBinding(clone, charset);
 	}
-	
+
+	private String trailing;
+
 	@Override
-	protected ComplexContent unmarshal(ReadableResource resource, ComplexType type, Window [] windows, Value<?>...values) throws IOException, ParseException {
+	protected ComplexContent unmarshal(ReadableResource resource, ComplexType type, Window[] windows, Value<?>... values) throws IOException, ParseException {
 		this.resource = resource;
-		ReadableContainer<CharBuffer> readable = IOUtils.wrapReadable(resource.getReadable(), charset);
-		ComplexContent content = type.newInstance();
+		ReadableContainer<ByteBuffer> bytes = resource.getReadable();
+		ReadableContainer<CharBuffer> chars = IOUtils.wrapReadable(bytes, charset);
+		LimitedMarkableContainer<CharBuffer> marked = new LimitedMarkableContainer<CharBuffer>(IOUtils.bufferReadable(chars, IOUtils.newCharBuffer(409600, true)), lookAhead);
+		
 		Record record = new Record();
+		record.setDescription("Binding Root");
 		if (getConfig().getRecord() != null) {
 			for (Fragment child : getConfig().getChildren()) {
 				if (child instanceof Record && getConfig().getRecord().equals(((Record) child).getName())) {
@@ -98,272 +119,298 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		else {
 			record.setChildren(getConfig().getChildren());
 		}
-		if (unmarshal(type.getName(), IOUtils.countReadable(readable), record, content, windows) == 0) {
-			return content;
-		}
-		else {
+		marked.mark();
+		ComplexContent newInstance = type.newInstance();
+		EOFReadableContainer<CharBuffer> eof = new EOFReadableContainer<CharBuffer>(marked);
+		String unmarshal = unmarshal(type.getName(), marked, eof, new CountingReadableContainerImpl<CharBuffer>(eof), record, newInstance, windows);
+		if (unmarshal == null) {
+			trailing = null;
 			return null;
 		}
-	}
-	
-	private String normalizeSeparator(String separator) {
-		return separator.replace("\\n", "\n")
-			.replace("\\r", "\r");
-	}
-	
-	/**
-	 * The return value is the amount the parent must reset to try the next bit (only for partial matches)
-	 * So if we have a 0 reset, we have matched the parent exactly
-	 * If we have a -1, we need to reset to the beginning, nothing positive was read
-	 * If some positive, some negative, it will be an amount to reset
-	 */
-	@SuppressWarnings({ "rawtypes", "unchecked" })
-	protected long unmarshal(String path, CountingReadableContainer<CharBuffer> input, Fragment fragment, ComplexContent content, Window...windows) throws IOException, ParseException {		
-		// the amount to reset in the parent marked container because it was not matched in a trailing fashion
-		long resetAmount = 0;
-		
-		ReadableContainer<CharBuffer> readable = null;
-		DelimitedCharContainer delimited = null;
-
-		// make sure we register eofs
-		// the fields simply do a toString() which will be empty if the stream is done, this means it would keep going indefinately otherwise
-		EOFReadableContainer<CharBuffer> eof = new EOFReadableContainer<CharBuffer>(input);
-		// separator based
-		if (fragment.getSeparator() != null) {
-			String separator = normalizeSeparator(fragment.getSeparator());
-		
-			// we need a maxlength to scan for
-			Integer maxLength = fragment.getMaxLength() != null ? fragment.getMaxLength() : getConfig().getMaxLookAhead();
-			
-			// limit in size & separator
-			if (fragment.getSeparatorLength() == null) {
-				delimited = IOUtils.delimit(IOUtils.limitReadable(eof, maxLength), separator);
+		else {
+			trailing = unmarshal + toString(marked);
+			if (!trailing.isEmpty() && !getConfig().isAllowTrailing()) {
+				throw new ParseException("Trailing characters not allowed: " + trailing, 0);
 			}
 			else {
-				delimited = IOUtils.delimit(IOUtils.limitReadable(eof, maxLength), separator, fragment.getSeparatorLength());
+				if (getConfig().getTrailingMatch() != null && !trailing.isEmpty() && !trailing.matches(getConfig().getTrailingMatch())) {
+					throw new ParseException("The trailing section did not match the allowed regex '" + getConfig().getTrailingMatch() + "': " + trailing, 0);
+				}
+				return newInstance;
 			}
-				
+		}
+	}
+	
+	public boolean isScopeMessages() {
+		return scopeMessages;
+	}
+
+	public void setScopeMessages(boolean scopeMessages) {
+		this.scopeMessages = scopeMessages;
+	}
+
+	public List<ValidationMessage> getMessages() {
+		return messages;
+	}
+
+	/**
+	 * This method assumes the following:
+	 * 		- fixed length is either a match (you can remark() the container) or a fail (reset())
+	 * 		- delimiter is either a matcher with a possible remainder (send back remainder) or an exact match with no remainder
+	 * The return value for this method means:
+	 * 		- if there is something in it: push it back to the delimited (if any) or reset() + skip read - string.length
+	 * 		- if it's an empty string: do nothing, it was an exact match
+	 * 		- if it's null: do a reset(), nothing was matched 
+	 */
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	private String unmarshal(String path, LimitedMarkableContainer<CharBuffer> marked, EOFReadableContainer<CharBuffer> eof, CountingReadableContainerImpl<CharBuffer> counting, Fragment fragment, ComplexContent content, Window...windows) throws ParseException, IOException {
+		// the delimited container (if any), it is used to keep track of whether or not the delimiter was found
+		BackedDelimitedCharContainer delimited = null;
+		
+		// the readable used to actually read from
+		// not all fields must be limited by a delimiter or length
+		// for example child fields are naturally delimited by the record they belong to
+		// root records don't need delimits because they might go to the end etc
+		ReadableContainer<CharBuffer> readable = counting;
+		
+		if (fragment.getSeparator() != null) {
+			String separator = normalizeSeparator(fragment.getSeparator());
+			// we need a maxlength to scan for
+			if (fragment.getMaxLength() != null) {
+				readable = IOUtils.limitReadable(readable, fragment.getMaxLength());
+			}
+			// limit in size & separator
+			if (fragment.getSeparatorLength() == null) {
+				delimited = new BackedDelimitedCharContainer(readable, fragment.getLength() == null ? 4096 : fragment.getLength() + separator.length(), separator);
+			}
+			else {
+				delimited = new BackedDelimitedCharContainer(readable, fragment.getLength() == null ? 4096 : fragment.getLength() + fragment.getSeparatorLength(), separator, fragment.getSeparatorLength());
+			}
 			readable = delimited;
 		}
 		// fixed length
 		else if (fragment.getLength() != null) {
-			readable = IOUtils.limitReadable(eof, fragment.getLength());
+			readable = IOUtils.limitReadable(readable, fragment.getLength());
 		}
-		// not all fields must be delimited
-		// for example child fields are naturally delimited by the record they belong to
-		// root records don't need delimits because they might go to the end etc
-		else {
-			readable = eof;
-		}
-		
+		String pushback = "";
 		if (fragment instanceof Record) {
 			// need a correct offset to be able to skip later on
-			long alreadyRead = input.getReadTotal();
-			// need a correct offset to check the full length read later on
+			long alreadyRead = counting.getReadTotal();
 			long initialRead = alreadyRead;
-			// mark the input so we can return to this point in case it is not the correct record
-			MarkableContainer<CharBuffer> markable = IOUtils.mark(readable);
-			markable.mark();
 			
-			// check to see that it has at least one match
-			boolean hasAnyMatch = false;
-			// now that we have a limited view, we need to parse the child fragments and hope there are identifying fields that can tell us if it is ok
+			// this is kept to see if we have parsed anything for this record
+			// if we parse something successfully and the next one is unsuccesful, we need to throw an exception
+			// if the entire thing is unsuccessful, we return false
+			boolean hasParsedAnything = false;
 			record: for (Fragment child : ((Record) fragment).getChildren()) {
-				if (eof.isEOF()) {
-					break;
-				}
-				// if the child is a record and it has a map, we need to create a new complex content
 				if (child instanceof Record && child.getMap() != null) {
 					child = ((Record) child).resolve(getConfig().getChildren());
-
 					Element<?> childElement = content.getType().get(child.getMap());
 					if (childElement == null) {
-						throw new ParseException("The element " + child.getMap() + " does not exist in " + path, 0);
+						throw new ParseException("The element " + child.getMap() + " does not exist in " + path, (int) alreadyRead);
 					}
 					if (!(childElement.getType() instanceof ComplexType)) {
-						throw new ParseException("The record points to a child that is not complex", 0);
+						throw new ParseException("The record points to a child that is not complex", (int) alreadyRead);
 					}
+					Value<Integer> minOccurs = childElement.getProperty(new MinOccursProperty());
+					int typeMinOccurs = minOccurs == null ? 1 : minOccurs.getValue();
 					Value<Integer> maxOccurs = childElement.getProperty(new MaxOccursProperty());
+					int typeMaxOccurs = maxOccurs == null ? 1 : maxOccurs.getValue();
 					int recordCounter = 0;
-					// apart from the max occurs that limits the target data structure, you can also limit the amount of records in the source
-					// for instance if you know a certain type of record will only occur x times, it might be best to tell the parser
-					int maxRecordAmount = ((Record) child).getMaxOccurs() == null ? 0 : ((Record) child).getMaxOccurs();
+					int maxRecordAmount = ((Record) child).getMaxOccurs() == null ? typeMaxOccurs : ((Record) child).getMaxOccurs();
+					int minRecordAmount = ((Record) child).getMinOccurs() == null ? typeMinOccurs : ((Record) child).getMinOccurs();
 					while(maxRecordAmount == 0 || recordCounter < maxRecordAmount) {
+//						System.out.println("parsing " + child + "[" + recordCounter + "]");
 						if (eof.isEOF()) {
 							break record;
 						}
 						ComplexContent childContent = ((ComplexType) childElement.getType()).newInstance();
-						// if we successfully parsed the child, add it
-						CountingReadableContainer<CharBuffer> childContainer = IOUtils.countReadable(markable, alreadyRead);
 						String childPath = path + "/" + childElement.getName();
-						resetAmount = unmarshal(childPath, childContainer, child, childContent, windows);
-						// if we have done a full read (0) or a partial one (> 0) and it's allowed, continue
-						if (resetAmount == 0 || (resetAmount > 0 && ((Record) child).isPartialAllowed())) {
-							hasAnyMatch = true;
-							// if we have to reset a number of characters, do this
-							if (resetAmount > 0) {
-								markable.reset();
-								IOUtils.skipChars(markable, (childContainer.getReadTotal() - alreadyRead) - resetAmount);
-								resetAmount = 0;
+						CountingReadableContainerImpl<CharBuffer> childCounting = new CountingReadableContainerImpl<CharBuffer>(readable, alreadyRead);
+						// the child is not a match
+						pushback = unmarshal(childPath, marked, eof, childCounting, child, childContent, windows);
+						// no match
+						if (pushback == null) {
+							// reset the parent counting correct
+							counting.setReadTotal(initialRead);
+							if (recordCounter < minRecordAmount) {
+								// if we have parsed something, this is considered invalid
+								if (hasParsedAnything) {
+									throw new ParseException("The record " + child.getMap() + " does not have enough iterations: " + recordCounter + "/" + minRecordAmount, (int) alreadyRead);
+								}
+								// otherwise it might just not be a match, have the parent reset
+								else {
+									messages.add(new ValidationMessage(Severity.WARNING, "Parsing " + child.getMap() + " failed after: " + recordCounter + " of [" + minRecordAmount + ", " + maxRecordAmount + "] iterations", (int) alreadyRead));
+									return null;
+								}
 							}
-							// otherwise just reset the mark
+							// if this is the last, don't send back null to indicate failure
+							pushback = "";
+							marked.reset();
+							// reset the container to try the next fragment
+							// if we continue parsing, reset the delimited, it is in an unknown state
+							if (delimited != null) {
+								delimited.reset();
+							}
+							break;
+						}
+						else {
+							// update the alreadyread, the child read has set this correctly
+							alreadyRead = childCounting.getReadTotal();
+							// reset the parent so it's correct
+							counting.setReadTotal(alreadyRead);
+							
+							// clear any messages up till now
+							if (scopeMessages) {
+								messages.clear();
+							}
+							
+							hasParsedAnything = true;
+							recordCounter++;
+							marked.moveMarkAbsolute(alreadyRead);
+							// push it back to the delimited if it is there, that means it is NOT stored in the marked! hence retain the pushback, it might be necessary to send it to the parent call
+							if (delimited != null) {
+								delimited.pushback(IOUtils.wrap(pushback));
+							}
 							else {
-								// unmark the input, we have identified the part so we no longer need to buffer it for reset
-								markable.unmark();
-								// but mark it again for the next parse
-								markable.mark();
+								marked.pushback(IOUtils.wrap(pushback));
+								pushback = "";
 							}
-							// now we need to set it in the parent
-							// if it is a list, it can be windowed!
-							if (maxOccurs != null && maxOccurs.getValue() != 1) {
-								// get the current value, see if there is a list already basically
-								// Note: this only works with integer indexed collections
-								Object currentObject = content.get(childElement.getName());
-								int index = 0;
-								if (currentObject != null) {
-									CollectionHandlerProvider provider = collectionHandler.getHandler(currentObject.getClass());
-									index = provider.getAsCollection(currentObject).size();
+						}
+						// if the type expects a list, it can be windowed
+						if (typeMaxOccurs != 1) {
+							// get the current value, see if there is a list already basically
+							// Note: this only works with integer indexed collections
+							Object currentObject = content.get(childElement.getName());
+							int index = 0;
+							if (currentObject != null) {
+								CollectionHandlerProvider provider = collectionHandler.getHandler(currentObject.getClass());
+								index = provider.getAsCollection(currentObject).size();
+							}
+							Window activeWindow = null;
+							for (Window window : windows) {
+								if (window.getPath().equals(childPath)) {
+									activeWindow = window;
+									break;
 								}
-								Window activeWindow = null;
-								for (Window window : windows) {
-									if (window.getPath().equals(childPath)) {
-										activeWindow = window;
-										break;
-									}
+							}
+							if (activeWindow != null) {
+								WindowedList list = null;
+								// if the current object is already a list but it is empty (e.g. default initialization), overwrite it with a windowed list
+								if (currentObject == null || (currentObject instanceof List && ((List) currentObject).isEmpty())) { 
+									list = new WindowedList(resource, activeWindow, new PartialFlatUnmarshaller((Record) child, (ComplexType) content.getType().get(childElement.getName()).getType(), activeWindow, windows));
+									content.set(childElement.getName(), list);
 								}
-								if (activeWindow != null) {
-									WindowedList list = null;
-									// if the current object is already a list but it is empty (e.g. default initialization), overwrite it with a windowed list
-									if (currentObject == null || (currentObject instanceof List && ((List) currentObject).isEmpty())) { 
-										list = new WindowedList(resource, activeWindow, new PartialFlatUnmarshaller((Record) child, (ComplexType) content.getType().get(childElement.getName()).getType(), activeWindow, windows));
-										content.set(childElement.getName(), list);
-									}
-									else if (currentObject instanceof WindowedList) {
-										list = (WindowedList) currentObject;
-									}
-									else {
-										throw new IllegalArgumentException("The collection already exists and is not windowed");
-									}
-									// always register the offset
-									list.setOffset(index, alreadyRead);
-									// only register the object if it is within the window size
-									if (index < activeWindow.getSize()) {
-										content.set(childElement.getName() + "[" + index + "]", childContent);
-									}
+								else if (currentObject instanceof WindowedList) {
+									list = (WindowedList) currentObject;
 								}
 								else {
-									// this reuses the internal collection handling
+									throw new IllegalArgumentException("The collection already exists and is not windowed");
+								}
+								// always register the offset
+								list.setOffset(index, alreadyRead);
+								// only register the object if it is within the window size
+								if (index < activeWindow.getSize()) {
 									content.set(childElement.getName() + "[" + index + "]", childContent);
 								}
 							}
 							else {
-								content.set(child.getMap(), childContent);
-							}
-							// we need to update the alreadyRead because this was successful
-							alreadyRead = childContainer.getReadTotal();
-							if (maxOccurs == null || maxOccurs.getValue() == 1) {
-								break;
-							}
-							else {
-								recordCounter++;
+								// this reuses the internal collection handling
+								content.set(childElement.getName() + "[" + index + "]", childContent);
 							}
 						}
-						// if not matched, reset for the next record
 						else {
-							// if partials are not allowed for this record and no records were matched, break
-							// also note that if recordCounter is larger than 0, at least one full match was done so don't break fully in that case
-							if (!((Record) fragment).isPartialAllowed() && recordCounter == 0) {
-								if (recordCounter > 0) {
-									resetAmount = childContainer.getReadTotal() - alreadyRead;
-								}
-								else {
-									resetAmount = -1;
-								}
-								break record;
-							}
-							else {
-								resetAmount = childContainer.getReadTotal() - alreadyRead;
-								markable.reset();
-								break;
-							}
+							content.set(child.getMap(), childContent);
 						}
 					}
 				}
 				// it's either a record we don't need to map or a field
 				else {
-					CountingReadableContainer<CharBuffer> childContainer = IOUtils.countReadable(markable, alreadyRead);
-					resetAmount = unmarshal(path, childContainer, child, content, windows);
-					if (resetAmount == 0) {
-						hasAnyMatch = true;
-						markable.unmark();
-						markable.mark();
-						alreadyRead = childContainer.getReadTotal();
-					}
-					else if (resetAmount > 0 && child instanceof Record && ((Record) child).isPartialAllowed()) {
-						markable.reset();
-						IOUtils.skipChars(markable, (childContainer.getReadTotal() - alreadyRead) - resetAmount);
-						resetAmount = 0;
+					CountingReadableContainerImpl<CharBuffer> childCounting = new CountingReadableContainerImpl<CharBuffer>(readable, alreadyRead);
+					pushback = unmarshal(path, marked, eof, childCounting, child, content, windows);
+					if (pushback == null) {
+						counting.setReadTotal(initialRead);
+						int minRecordAmount = !(child instanceof Record) || ((Record) child).getMinOccurs() == null ? 1 : ((Record) child).getMinOccurs();
+						if (minRecordAmount != 0) {
+							messages.add(new ValidationMessage(Severity.ERROR, "Could not parse '" + child + "' in: " + fragment, (int) alreadyRead));
+							return null;
+						}
+						messages.add(new ValidationMessage(Severity.WARNING, "Could not parse '" + child + "' in: " + fragment, (int) alreadyRead));
+						pushback = "";
+						marked.reset();
+						// reset the container to try the next fragment
+						// if we continue parsing, reset the delimited, it is in an unknown state
+						if (delimited != null) {
+							delimited.reset();
+						}
 					}
 					else {
-						resetAmount = -1;
-						break;
+						if (child instanceof Field) {
+							childCounting.add(-pushback.length());
+						}
+						hasParsedAnything = true;
+						// update the alreadyread;
+						alreadyRead = childCounting.getReadTotal();
+						if (!(child instanceof Field)) {
+							marked.moveMarkAbsolute(alreadyRead);
+							// clear any messages up till now
+							if (scopeMessages) {
+								messages.clear();
+							}
+						}
+						// reset the parent so it's correct
+						counting.setReadTotal(alreadyRead);
+						if (delimited != null) {
+							delimited.pushback(IOUtils.wrap(pushback));
+						}
+						else {
+							marked.pushback(IOUtils.wrap(pushback));
+							pushback = "";
+						}
 					}
 				}
 			}
-			// if not a single match was performed, make sure it is set to -1
-			if (!hasAnyMatch) {
-				resetAmount = -1;
-			}
-			// if the reset amount is already -1, just let it bubble up
-			// if it is already positive, it doesn't matter, a reset will happen anyway
-			// however if we think it's a full match, do additional checks to see that we read everything according to the definition
-			if (resetAmount == 0) {
-				// if we have a delimited stream, read it fully to see if we have dangling characters
-				if (delimited != null) {
-					// if we get here, it is possible the record was not read to the fullest (e.g. fixed length)
-					String remainder = IOUtils.toString(markable);
-					if (!remainder.isEmpty()) {
-						throw new ParseException("There are dangling characters at the end of a record: '" + remainder + "'", 0);
-					}
-					resetAmount = input.getReadTotal() - alreadyRead;
-					// the "alreadyread" is only for the valid record, it does not take into account any delimiters that are read, so make sure we take that into account
-					if (delimited.isDelimiterFound()) {
-						resetAmount -= delimited.getMatchedDelimiter().length();
-					}
-					// if the reset amount is still 0, we have confirmed the delimiter check
-					if (resetAmount == 0 && fragment.getLength() != null) {
-						long shouldHaveRead = fragment.getLength();
-						if (delimited.isDelimiterFound()) {
-							shouldHaveRead += delimited.getMatchedDelimiter().length();
-						}
-						if (shouldHaveRead != input.getReadTotal() - initialRead) {
-							throw new ParseException("There were not enough characters for the record: " + (input.getReadTotal() - initialRead) + "/" + shouldHaveRead, 0);
-						}
+			if (delimited != null) {
+				// if we get here, it is possible the record was not read to the fullest (e.g. fixed length)
+				String remainder = toString(readable);
+				if (!remainder.isEmpty()) {
+					throw new ParseException("There are dangling characters at the end of a record: '" + remainder + "'", (int) alreadyRead);
+				}
+				// check any length set on the entire fragment
+				if (fragment.getLength() != null) {
+					long shouldHaveRead = fragment.getLength();
+					long hasActuallyRead = alreadyRead - initialRead;
+					if (shouldHaveRead != hasActuallyRead) {
+						throw new ParseException("There were not enough characters for the record " + fragment.getMap() + ": " + hasActuallyRead + "/" + shouldHaveRead, (int) alreadyRead);
 					}
 				}
 				// otherwise, if we have a fixed length, double check that
 				else if (fragment.getLength() != null) {
-					if (fragment.getLength() != ((CountingReadableContainer) readable).getReadTotal()) {
-						throw new ParseException("Record of wrong length: " +  ((CountingReadableContainer) readable).getReadTotal() + "/" + fragment.getLength(), 0);
+					if (fragment.getLength() != alreadyRead) {
+						throw new ParseException("Record of wrong length: " +  alreadyRead + "/" + fragment.getLength(), (int) alreadyRead);
 					}
 				}
 			}
+			// make sure the delimited is counted into the offsets
+			if (delimited != null && delimited.getMatchedDelimiter() != null) {
+				counting.add(delimited.getMatchedDelimiter().length());
+			}
 		}
-		// for a field, parse it and set it
+		// for a field, parse it and set itheader
 		else {
 			Field field = (Field) fragment;
-			String value = IOUtils.toString(readable);
+			String value = toString(readable);
 			if (delimited != null && !delimited.isDelimiterFound() && !field.isCanEnd()) {
-				return -1;
+				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' is delimited with '" + field.getSeparator() + "' but no separator was found and this field is not optional", (int) counting.getReadTotal()));
+				return null;
 			}
 			else if (field.getFixed() != null && !field.getFixed().equals(value)) {
-				return -1;
+				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' does not have the correct fixed value, expecting '" + field.getFixed() + "', received '" + value + "'", (int) counting.getReadTotal()));
+				return null;
 			}
 			else if (field.getMatch() != null && !value.matches(field.getMatch())) {
-				return -1;
-			}
-			else {
-				resetAmount = 0;
+				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' does not match the given regex, expecting match for '" + field.getMatch() + "', received '" + value + "'", (int) counting.getReadTotal()));
+				return null;
 			}
 			if (field.getMap() != null) {
 				// if it's fixed length, it might be padded
@@ -427,9 +474,33 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				content.set(field.getMap(), unmarshalledValue);
 			}
 		}
-		return resetAmount;
+		if (pushback != null && delimited != null && delimited.getRemainder() != null) {
+			pushback += delimited.getRemainder();
+		}
+		return pushback;
 	}
-
+	
+	
+	private char [] stringificationBuffer = new char[4096];
+	
+	/**
+	 * This is a copy of the IOUtils.toString() method with the exception that the used char array does not have to be instantiated every time
+	 * This appears to make a ~30% difference in performance
+	 */
+	public String toString(ReadableContainer<CharBuffer> readable) throws IOException {
+		StringBuilder builder = new StringBuilder();
+		long read = 0;
+		while ((read = readable.read(IOUtils.wrap(stringificationBuffer, false))) > 0) {
+			builder.append(new String(stringificationBuffer, 0, (int) read));
+		}
+		return builder.toString();
+	}
+	
+	private String normalizeSeparator(String separator) {
+		return separator.replace("\\n", "\n")
+			.replace("\\r", "\r");
+	}
+	
 	@Override
 	public void marshal(OutputStream output, ComplexContent content, Value<?>...values) throws IOException {
 		Record record = new Record();
@@ -578,10 +649,6 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			}
 		}
 	}
-
-	public Charset getCharset() {
-		return charset;
-	}
 	
 	public class PartialFlatUnmarshaller implements PartialUnmarshaller {
 
@@ -606,15 +673,24 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				throw new IOException("Could not skip to position " + offset);
 			}
 			List<ComplexContent> entries = new ArrayList<ComplexContent>();
+			LimitedMarkableContainer<CharBuffer> marked = new LimitedMarkableContainer<CharBuffer>(readable, 0);
+			marked.mark();
 			for (int i = 0; i < batchSize; i++) {
-				CountingReadableContainer<CharBuffer> counting = IOUtils.countReadable(readable, offset);
+				EOFReadableContainer<CharBuffer> eof = new EOFReadableContainer<CharBuffer>(marked);
+				CountingReadableContainerImpl<CharBuffer> counting = new CountingReadableContainerImpl<CharBuffer>(eof, offset);
 				ComplexContent content = type.newInstance();
-				FlatBinding.this.unmarshal(thisWindow.getPath(), counting, record, content, otherWindows.toArray(new Window[0]));
+				String pushback = FlatBinding.this.unmarshal(thisWindow.getPath(), marked, eof, counting, record, content, otherWindows.toArray(new Window[0]));
+				if (pushback == null) {
+					throw new ParseException("Can not reparse windowed elements", 0);
+				}
 				entries.add(content);
-				offset = counting.getReadTotal();
+				offset = counting.getReadTotal() - pushback.length();
+				marked.remark();
+				marked.pushback(IOUtils.wrap(pushback));
 			}
 			return entries;
 		}
 		
 	}
+
 }

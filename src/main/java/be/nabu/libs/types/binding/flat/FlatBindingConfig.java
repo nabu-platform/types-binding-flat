@@ -26,6 +26,8 @@ public class FlatBindingConfig extends BindingConfig {
 	private List<Fragment> children;
 	private int maxLookAhead = 1024000;
 	private String record;
+	private Boolean allowTrailing;
+	private String trailingMatch;
 	
 	@XmlElements({
 		@XmlElement(name = "record", type = Record.class),
@@ -36,6 +38,27 @@ public class FlatBindingConfig extends BindingConfig {
 	}
 	public void setChildren(List<Fragment> children) {
 		this.children = children;
+	}
+	
+	@XmlTransient
+	public boolean isAllowTrailing() {
+		return getAllowTrailing() != null && getAllowTrailing();
+	}
+	
+	@XmlAttribute
+	public String getTrailingMatch() {
+		return trailingMatch;
+	}
+	public void setTrailingMatch(String trailingMatch) {
+		this.trailingMatch = trailingMatch;
+	}
+	
+	@XmlAttribute
+	public Boolean getAllowTrailing() {
+		return allowTrailing;
+	}
+	public void setAllowTrailing(Boolean allowTrailing) {
+		this.allowTrailing = allowTrailing;
 	}
 	
 	@XmlAttribute
@@ -63,6 +86,8 @@ public class FlatBindingConfig extends BindingConfig {
 		config.setComplexType(getComplexType());
 		config.setMaxLookAhead(getMaxLookAhead());
 		config.setRecord(getRecord());
+		config.setAllowTrailing(getAllowTrailing());
+		config.setTrailingMatch(getTrailingMatch());
 		return config;
 	}
 	
@@ -74,9 +99,11 @@ public class FlatBindingConfig extends BindingConfig {
 	@XmlRootElement(name = "record")
 	public static class Record extends Fragment {		
 		private List<Fragment> children = new ArrayList<Fragment>();
-		private Integer maxOccurs;
+		private Integer maxOccurs, minOccurs;
 		private Boolean allowPartial;
 		private String name, parent, complexType;
+		
+		private Boolean isIdentifiable, shouldBuffer;
 		
 		@XmlElements({
 			@XmlElement(name = "record", type = Record.class),
@@ -88,10 +115,20 @@ public class FlatBindingConfig extends BindingConfig {
 			}
 			return children;
 		}
+		
 		public void setChildren(List<Fragment> children) {
 			this.children = children;
 		}
 		
+		@XmlAttribute
+		public Integer getMinOccurs() {
+			return minOccurs;
+		}
+
+		public void setMinOccurs(Integer minOccurs) {
+			this.minOccurs = minOccurs;
+		}
+
 		@XmlAttribute
 		public Integer getMaxOccurs() {
 			return maxOccurs;
@@ -137,6 +174,46 @@ public class FlatBindingConfig extends BindingConfig {
 			this.complexType = complexType;
 		}
 		
+		@Override
+		@XmlTransient
+		public boolean isIdentifiable() {
+			if (isIdentifiable == null) {
+				isIdentifiable = false;
+				for (Fragment child : children) {
+					if (child.isIdentifiable()) {
+						isIdentifiable = true;
+						break;
+					}
+				}
+			}
+			return isIdentifiable;
+		}
+
+		public boolean shouldBuffer() {
+			if (shouldBuffer == null) {
+				int childRecords = 0;
+				// initially assume we don't
+				shouldBuffer = false;
+				for (Fragment child : getChildren()) {
+					if (child instanceof Record) {
+						childRecords++;
+						// if we have a list, we also need to buffer (but at least we can reset the buffer after each successful record)
+						Integer maxOccurs = ((Record) child).getMaxOccurs();
+						// assume one occurrence
+						if (maxOccurs != null && !maxOccurs.equals(1)) {
+							shouldBuffer = true;
+							break;
+						}
+					}
+				}
+				// if we conclude that we don't need to buffer, we should still check if we allow partial matches and actually have multiple child records to choose from
+				if (!shouldBuffer) {
+					shouldBuffer = isPartialAllowed() && childRecords >= 2;
+				}
+			}
+			return shouldBuffer;
+		}
+
 		public Record resolve(List<Fragment> fragments) {
 			if (getParent() == null) {
 				return this;
@@ -169,6 +246,9 @@ public class FlatBindingConfig extends BindingConfig {
 			if (getMaxOccurs() == null) {
 				setMaxOccurs(record.getMaxOccurs());
 			}
+			if (getMinOccurs() == null) {
+				setMinOccurs(record.getMinOccurs());
+			}
 			if (getSeparator() == null) {
 				setSeparator(record.getSeparator());
 			}
@@ -194,6 +274,7 @@ public class FlatBindingConfig extends BindingConfig {
 			record.setLength(getLength());
 			record.setMaxLength(getMaxLength());
 			record.setMaxOccurs(getMaxOccurs());
+			record.setMinOccurs(getMinOccurs());
 			record.setChildren(new ArrayList<Fragment>(getChildren()));
 			record.setSeparator(getSeparator());
 			record.setSeparatorLength(getSeparatorLength());
@@ -260,10 +341,16 @@ public class FlatBindingConfig extends BindingConfig {
 		public void setPad(String pad) {
 			this.pad = pad;
 		}
+		
+		@XmlTransient
+		@Override
+		public boolean isIdentifiable() {
+			return match != null || fixed != null;
+		}
 	}
 	
 	@XmlSeeAlso({ Record.class, Field.class })
-	public static class Fragment {
+	abstract public static class Fragment {
 		private String separator;
 		private Integer separatorLength;
 		private String map;
@@ -317,6 +404,9 @@ public class FlatBindingConfig extends BindingConfig {
 		public void setSeparatorLength(Integer separatorLength) {
 			this.separatorLength = separatorLength;
 		}
+		
+		@XmlTransient
+		abstract public boolean isIdentifiable();
 	}
 	
 	public static FlatBindingConfig load(URL url) throws IOException {

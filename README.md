@@ -110,7 +110,7 @@ The following is a small but representative part of the binding:
 
 ```xml
 <binding complexType="com.example.Declarations">
-	<record map="declarations" allowPartial="true">
+	<record map="declarations">
 	    <record separator="\n" map="header">
 	        <field length="2" fixed="00"/>
 	        <field length="1" map="type"/>
@@ -119,7 +119,7 @@ The following is a small but representative part of the binding:
 	        <field length="10" map="number"/>
 	        <field length="8" map="creationDate" formatter="com.example.custom.DateMarshaller"/>
 	    </record>
-	    <record separator="\n" map="elements">
+	    <record separator="\n" map="elements" minOccurs="0" maxOccurs="0">
 	        <field length="2" map="type" match="[A-Z]{1}[0-9]{1}" />
 	        <field length="20" map="reference"/>
 	        <field length="11" map="something/this"/>
@@ -138,8 +138,8 @@ The following is a small but representative part of the binding:
 Interesting to note:
 
 - We added a root record to indicate the repeating nature of the declarations
-- The "allowPartial" on the root record indicates that not all the records must be matched for it to be valid. You can set this on any record
-- A mixture of separator based with fixed length. If the record is shorter than defined by the fields, the remaining fields are null. If the record is too long, you will get a parse exception.
+- The "minOccurs" on the elements record means it is optional. The maxOccurs is set to 0 which means it is unbounded. Default for both these fields is 1.
+- A mixture of separator based with fixed length. If the record is shorter than defined by the fields, the remaining fields are null. If the record is too long, you will get a parse exception. You can however explicitly set a length on the record as well which means it will also throw an exception if the record is shorter.
 
 ## Additional Notes
 
@@ -152,12 +152,12 @@ This readme is not complete yet but a few quick pointers:
 
 ### Records
 
-- Min occurs and max occurs of records are usually determined from the data type you map to but you can forcibly set this with the attribute "maxOccurs" on a record after which it will stop trying to match that record.
+- Min occurs and max occurs of records are usually determined from the data type you map to but you can forcibly set this with the attributes "minOccurs" and "maxOccurs" on a record
 
 ### Fields
 
 - You can set the attribute "pad" which will override the default space padding that is enabled on fixed length fields. You can fill a character or a string. The string will be repeated as much as possible and cut off (left or right depending on justify) if too long
-- You can set the attribute "leftAlign" where you can set (true/false) whether or not this field is left aligned. Default is false
+- You can set the attribute "leftAlign" where you can set (true/false) whether or not the value for this field is left aligned. Default is false
 - You can set the attribute "canEnd" where you can set (true/false) whether this field can end the record prematurely. It is basically telling the parser that if the record ends after this field, it's ok even if more fields are defined. This can be used to define optional fields at the end.
 - The formatter field can take any formatter and once you have given it a formatter, you can define any attribute that it uses. For example the date formatter in the first example has format, timezone,...
 
@@ -167,12 +167,12 @@ By default the binding file will use the complex type defined in the root "bindi
 
 ```xml
 <binding record="declaration">
-	<record name="declaration" allowPartial="true" complexType="com.example.Declaration">
+	<record name="declaration" complexType="com.example.Declaration">
 		<record parent="header" map="header"/>
 		<record parent="element" map="elements"/>
 		<record parent="footer" map="footer"/>
 	</record>
-	<record name="rejection" allowPartial="true" complexType="com.example.Declaration">
+	<record name="rejection" complexType="com.example.Declaration">
 		<record parent="header" map="header"/>
 		<record parent="rejectionElement" map="elements"/>
 		<record parent="footer" map="footer"/>
