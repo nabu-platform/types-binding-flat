@@ -243,6 +243,9 @@ public class FlatBindingConfig extends BindingConfig {
 			if (getMaxLength() == null) {
 				setMaxLength(record.getMaxLength());
 			}
+			if (getMinLength() == null) {
+				setMinLength(record.getMinLength());
+			}
 			if (getMaxOccurs() == null) {
 				setMaxOccurs(record.getMaxOccurs());
 			}
@@ -273,6 +276,7 @@ public class FlatBindingConfig extends BindingConfig {
 			record.setMap(getMap());
 			record.setLength(getLength());
 			record.setMaxLength(getMaxLength());
+			record.setMinLength(getMinLength());
 			record.setMaxOccurs(getMaxOccurs());
 			record.setMinOccurs(getMinOccurs());
 			record.setChildren(new ArrayList<Fragment>(getChildren()));
@@ -355,7 +359,7 @@ public class FlatBindingConfig extends BindingConfig {
 		private Integer separatorLength;
 		private String map;
 		private Integer length;
-		private Integer maxLength;
+		private Integer maxLength, minLength;
 		private String description;
 
 		@XmlAttribute
@@ -385,6 +389,13 @@ public class FlatBindingConfig extends BindingConfig {
 		}
 		public void setMaxLength(Integer maxLength) {
 			this.maxLength = maxLength;
+		}
+		@XmlAttribute
+		public Integer getMinLength() {
+			return minLength;
+		}
+		public void setMinLength(Integer minLength) {
+			this.minLength = minLength;
 		}
 		@XmlAttribute
 		public String getDescription() {

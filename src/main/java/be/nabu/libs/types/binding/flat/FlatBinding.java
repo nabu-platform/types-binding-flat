@@ -378,12 +378,17 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				if (!remainder.isEmpty()) {
 					throw new ParseException("There are dangling characters at the end of the " + fragment + ": '" + remainder + "'", (int) alreadyRead);
 				}
+				long hasActuallyRead = alreadyRead - initialRead;
 				// check any length set on the entire fragment
 				if (fragment.getLength() != null) {
 					long shouldHaveRead = fragment.getLength();
-					long hasActuallyRead = alreadyRead - initialRead;
 					if (shouldHaveRead != hasActuallyRead) {
-						throw new ParseException("There were not enough characters for the " + fragment + ": " + hasActuallyRead + "/" + shouldHaveRead, (int) alreadyRead);
+						throw new ParseException("There were not enough characters for the " + fragment + ": " + hasActuallyRead + " != " + shouldHaveRead, (int) alreadyRead);
+					}
+				}
+				else if (fragment.getMinLength() != null) {
+					if (hasActuallyRead < fragment.getMinLength()) {
+						throw new ParseException("There were not enough characters for the " + fragment + ": " + hasActuallyRead + " < " + fragment.getMinLength(), (int) alreadyRead);
 					}
 				}
 				// otherwise, if we have a fixed length, double check that
@@ -429,7 +434,10 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 						}
 					}
 				}
-				
+				if (field.getMinLength() != null && value.length() < field.getMinLength()) {
+					messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' does not have enough characters:" + value.length() + " < " + field.getMinLength(), (int) counting.getReadTotal()));
+					return null;
+				}
 				Object unmarshalledValue = value;
 				if (value.isEmpty()) {
 					unmarshalledValue = null;
