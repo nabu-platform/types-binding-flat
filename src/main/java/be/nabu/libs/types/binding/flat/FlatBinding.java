@@ -222,7 +222,6 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 					int maxRecordAmount = ((Record) child).getMaxOccurs() == null ? typeMaxOccurs : ((Record) child).getMaxOccurs();
 					int minRecordAmount = ((Record) child).getMinOccurs() == null ? typeMinOccurs : ((Record) child).getMinOccurs();
 					while(maxRecordAmount == 0 || recordCounter < maxRecordAmount) {
-//						System.out.println("parsing " + child + "[" + recordCounter + "]");
 						if (eof.isEOF()) {
 							break record;
 						}
@@ -233,9 +232,9 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 						pushback = unmarshal(childPath, marked, eof, childCounting, child, childContent, windows);
 						// no match
 						if (pushback == null) {
-							// reset the parent counting correct
-							counting.setReadTotal(initialRead);
 							if (recordCounter < minRecordAmount) {
+								// reset the parent counting correct
+								counting.setReadTotal(initialRead);
 								// if we have parsed something, this is considered invalid
 								if (hasParsedAnything) {
 									throw new ParseException("The record " + child.getMap() + " does not have enough iterations: " + recordCounter + "/" + minRecordAmount + ", " + formatMessages(), (int) alreadyRead);
@@ -245,6 +244,9 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 									messages.add(new ValidationMessage(Severity.WARNING, "Parsing " + child.getMap() + " failed after: " + recordCounter + " of [" + minRecordAmount + ", " + maxRecordAmount + "] iterations", (int) alreadyRead));
 									return null;
 								}
+							}
+							else {
+								counting.setReadTotal(alreadyRead);
 							}
 							// if this is the last, don't send back null to indicate failure
 							pushback = "";

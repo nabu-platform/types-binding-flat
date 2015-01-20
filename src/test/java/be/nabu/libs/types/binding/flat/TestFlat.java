@@ -27,6 +27,18 @@ public class TestFlat extends TestCase {
 		System.out.println(IOUtils.toString(IOUtils.wrapReadable(buffer, binding.getCharset())));
 	}
 	
+	public void testNoFooter() throws IOException, ParseException {
+		FlatBindingConfig config = FlatBindingConfig.load(Thread.currentThread().getContextClassLoader().getResource("binding.xml"));
+		FlatBinding binding = new FlatBinding(DefinedTypeResolverFactory.getInstance().getResolver(), config, Charset.forName("UTF-8"));
+		try {
+			unmarshal(binding, "flat-no-footer.csv", Company.class);
+			fail("should fail");
+		}
+		catch (ParseException e) {
+			// expected
+		}
+	}
+	
 	public void testPlainParse() throws IOException, ParseException {
 		FlatBindingConfig config = FlatBindingConfig.load(Thread.currentThread().getContextClassLoader().getResource("binding.xml"));
 		FlatBinding binding = new FlatBinding(DefinedTypeResolverFactory.getInstance().getResolver(), config, Charset.forName("UTF-8"));
