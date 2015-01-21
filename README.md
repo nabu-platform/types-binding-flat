@@ -1,6 +1,6 @@
 # Flat File Binding
 
-This binding implementation supports both fixed length and delimiter-based (or any combination thereof) flat files.
+This binding implementation supports both fixed length and delimiter-based (or any combination thereof) flat files. It parses in a streaming fashion, and allows you to set windows to keep memory usage acceptable when dealing with large files.
 Unlike other bindings like XML/JSON there is no "clear" link between the data and the type so you need a definition file to tell the engine how to parse/generate the files.
 
 As an example check the unit tests which contain two beans that look like this: 
@@ -152,7 +152,7 @@ This readme is not complete yet but a few quick pointers:
 
 ### Records
 
-- Min occurs and max occurs of records are usually determined from the data type you map to but you can forcibly set this with the attributes "minOccurs" and "maxOccurs" on a record
+- Min occurs and max occurs of records (default 1) are usually determined from the data type you map to but you can forcibly set this with the attributes "minOccurs" and "maxOccurs" on a record
 
 ### Fields
 
@@ -215,3 +215,17 @@ FlatBinding binding = getFlatBinding();
 // this will use the "rejection" record:
 binding = binding.getNamedBinding("rejection");
 ```
+
+# Performance
+
+The performance of the parser depends on type and definition of the flat file. I have done some extensive testing using a binding that is based on the one in the complex binding example (cfr) but slightly more expansive:
+
+- The header is 59 characters long and contains 9 fields
+- The element is 519 characters long and contains 57 fields
+- The footer is 148 characters long and contains 18 fields
+
+As an example testcase I created a file with 56926 elements in it which was about 30mb in size.
+
+The parser achieved a ratio of **1000 records per 50ms** which means it took about 2.8 seconds which means it parsed **20 records per ms**. Do note that the parser uses a lot of frameworks that use lazy loading so the first parse on a machine will have some overhead in that everything has to be initialized. However this is only once for the lifetime of the JVM and can be actively prevented by forcing an eager load.
+
+Part of the overhead of the parsing is that the element has 57 fields in it. Suppose we have an element with the same length (519 characters) but instead of putting it in 57 fields we map it to two fields (the first field being the first two characters that act as identifier and everything else in the second field). At that point the parser achieved a throughput of **1000 records per 10ms** which comes down to **100 records per ms** giving you a **total processing time of 569ms**.
