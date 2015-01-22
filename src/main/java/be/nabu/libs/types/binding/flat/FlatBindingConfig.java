@@ -236,6 +236,23 @@ public class FlatBindingConfig extends BindingConfig {
 		}
 
 		public void merge(Record record) {
+			// first make sure any field in the other record with the same id as a field here, overwrites it
+			for (int i = 0; i < getChildren().size(); i++) {
+				if (getChildren().get(i) instanceof Field) {
+					Field field = (Field) getChildren().get(i);
+					if (field.getId() != null) {
+						for (int j = record.getChildren().size() - 1; j >= 0; j--) {
+							if (record.getChildren().get(j) instanceof Field) {
+								Field childField = (Field) record.getChildren().get(j);
+								if (field.getId().equals(childField.getId())) {
+									getChildren().set(i, childField);
+									record.getChildren().remove(j);
+								}
+							}
+						}
+					}
+				}
+			}
 			getChildren().addAll(record.getChildren());
 			if (getLength() == null) {
 				setLength(record.getLength());
@@ -289,6 +306,7 @@ public class FlatBindingConfig extends BindingConfig {
 	
 	@XmlRootElement(name = "field")
 	public static class Field extends Fragment {
+		private String id;
 		private String fixed;
 		private String match;
 		private String pad;
@@ -344,6 +362,14 @@ public class FlatBindingConfig extends BindingConfig {
 		}
 		public void setPad(String pad) {
 			this.pad = pad;
+		}
+		
+		@XmlAttribute
+		public String getId() {
+			return id;
+		}
+		public void setId(String id) {
+			this.id = id;
 		}
 		
 		@XmlTransient
