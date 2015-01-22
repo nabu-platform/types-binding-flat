@@ -229,3 +229,9 @@ As an example testcase I created a file with 56926 elements in it which was abou
 The parser achieved a ratio of **1000 records per 50ms** which means it took about 2.8 seconds which means it parsed **20 records per ms**. Do note that the parser uses a lot of frameworks that use lazy loading so the first parse on a machine will have some overhead in that everything has to be initialized. However this is only once for the lifetime of the JVM and can be actively prevented by forcing an eager load.
 
 Part of the overhead of the parsing is that the element has 57 fields in it. Suppose we have an element with the same length (519 characters) but instead of putting it in 57 fields we map it to two fields (the first field being the first two characters that act as identifier and everything else in the second field). At that point the parser achieved a throughput of **1000 records per 10ms** which comes down to **100 records per ms** giving you a **total processing time of 569ms**.
+
+# TODO
+
+- Add support for the ResultHandler interface so you can process records as they are parsed
+- Add support for "strings" in delimited fields where the BackedDelimited can find a (non-escaped) quote to start a string, ignore any delimiter inside it until it finds a (non-escaped) quote to end the string. This can be used to allow the escape format of excel for both the linefeeds and the field delimiters. Note that a custom escape character (usually "\") should also be allowed but then we need to hold back not only the length of the separator but also that of the escape character(s)
+- Add support for EDI in that the delimiters can be updated dynamically after reading something (perhaps can use the result handler for this?)
