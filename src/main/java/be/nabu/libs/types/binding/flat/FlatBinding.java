@@ -205,8 +205,11 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			// if the entire thing is unsuccessful, we return false
 			boolean hasParsedAnything = false;
 			record: for (Fragment child : ((Record) fragment).getChildren()) {
-				if (child instanceof Record && child.getMap() != null) {
+				// always resolve a child record first
+				if (child instanceof Record) {
 					child = ((Record) child).resolve(getConfig().getChildren());
+				}
+				if (child instanceof Record && child.getMap() != null) {
 					Element<?> childElement = content.getType().get(child.getMap());
 					if (childElement == null) {
 						throw new ParseException("The element " + child.getMap() + " does not exist in " + path, (int) alreadyRead);
