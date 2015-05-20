@@ -201,7 +201,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			long initialRead = alreadyRead;
 			
 			// this is kept to see if we have parsed anything for this record
-			// if we parse something successfully and the next one is unsuccesful, we need to throw an exception
+			// if we parse something successfully and the next one is unsuccessful, we need to throw an exception
 			// if the entire thing is unsuccessful, we return false
 			boolean hasParsedAnything = false;
 			record: for (Fragment child : ((Record) fragment).getChildren()) {
@@ -393,19 +393,13 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 						throw new ParseException("There were not enough characters for the " + fragment + ": " + hasActuallyRead + " < " + fragment.getMinLength(), (int) alreadyRead);
 					}
 				}
-				// otherwise, if we have a fixed length, double check that
-				else if (fragment.getLength() != null) {
-					if (fragment.getLength() != alreadyRead) {
-						throw new ParseException(fragment + " of wrong length: " +  alreadyRead + "/" + fragment.getLength(), (int) alreadyRead);
-					}
-				}
 			}
 			// make sure the delimited is counted into the offsets
 			if (delimited != null && delimited.getMatchedDelimiter() != null) {
 				counting.add(delimited.getMatchedDelimiter().length());
 			}
 		}
-		// for a field, parse it and set itheader
+		// for a field, parse it and set it
 		else {
 			Field field = (Field) fragment;
 			String value = toString(readable);

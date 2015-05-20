@@ -1,0 +1,56 @@
+<schema xmlns="http://www.w3.org/2001/XMLSchema" xmlns:tns="http://nabu.be/libs/types-binding-flat/1.0" targetNamespace="http://nabu.be/libs/types-binding-flat/1.0">
+	
+	<element name="binding" type="tns:Binding" />
+
+	<complexType name="Binding">
+		<sequence>
+			<element maxOccurs="unbounded" name="children" nillable="true" type="tns:Fragment" />
+			<element name="complexType" nillable="true" type="string" />
+		</sequence>
+		<attribute name="complexType" type="string" />
+		<attribute name="allowTrailing" type="boolean" />
+		<attribute name="trailingMatch" type="string" />
+		<attribute name="maxLookAhead" type="int" />
+		<attribute name="record" type="string" />
+	</complexType>
+
+	<complexType name="Fragment">
+		<attribute name="minLength" type="int" />
+		<attribute name="maxLength" type="int" />
+		<attribute name="separatorLength" type="int" />
+		<attribute name="description" type="string" />
+		<attribute name="length" type="int" />
+		<attribute name="map" type="string" />
+		<attribute name="separator" type="string" />
+	</complexType>
+
+	<complexType name="Record">
+		<complexContent>
+			<extension base="tns:Fragment">
+				<sequence>
+					<element maxOccurs="unbounded" name="children" nillable="true" type="tns:Fragment" />
+				</sequence>
+				<attribute name="complexType" type="string" />
+				<attribute name="minOccurs" type="int" />
+				<attribute name="maxOccurs" type="int" />
+				<attribute name="name" type="string" />
+				<attribute name="parent" type="string" />
+			</extension>
+		</complexContent>
+	</complexType>
+
+	<complexType name="Field">
+		<complexContent>
+			<extension base="tns:Fragment">
+				<attribute name="match" type="string" />
+				<attribute name="fixed" type="string" />
+				<attribute name="leftAlign" type="boolean" />
+				<attribute name="formatter" type="string" />
+				<attribute name="canEnd" type="boolean" />
+				<attribute name="pad" type="string" />
+				<attribute name="id" type="string" />
+				<anyAttribute/>
+			</extension>
+		</complexContent>
+	</complexType>
+</schema>

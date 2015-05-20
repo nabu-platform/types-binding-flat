@@ -80,6 +80,7 @@ public class FlatBindingConfig extends BindingConfig {
 		this.record = record;
 	}
 
+	@Override
 	public FlatBindingConfig clone() {
 		FlatBindingConfig config = new FlatBindingConfig();
 		config.setChildren(getChildren());
@@ -100,10 +101,9 @@ public class FlatBindingConfig extends BindingConfig {
 	public static class Record extends Fragment {		
 		private List<Fragment> children = new ArrayList<Fragment>();
 		private Integer maxOccurs, minOccurs;
-		private Boolean allowPartial;
 		private String name, parent, complexType;
 		
-		private Boolean isIdentifiable, shouldBuffer;
+		private Boolean isIdentifiable;
 		
 		@XmlElements({
 			@XmlElement(name = "record", type = Record.class),
@@ -135,19 +135,6 @@ public class FlatBindingConfig extends BindingConfig {
 		}
 		public void setMaxOccurs(Integer maxOccurs) {
 			this.maxOccurs = maxOccurs;
-		}
-		
-		@XmlTransient
-		public boolean isPartialAllowed() {
-			return allowPartial != null && allowPartial;
-		}
-		
-		@XmlAttribute
-		public Boolean getAllowPartial() {
-			return allowPartial;
-		}
-		public void setAllowPartial(Boolean allowPartial) {
-			this.allowPartial = allowPartial;
 		}
 		
 		@XmlAttribute
@@ -187,31 +174,6 @@ public class FlatBindingConfig extends BindingConfig {
 				}
 			}
 			return isIdentifiable;
-		}
-
-		public boolean shouldBuffer() {
-			if (shouldBuffer == null) {
-				int childRecords = 0;
-				// initially assume we don't
-				shouldBuffer = false;
-				for (Fragment child : getChildren()) {
-					if (child instanceof Record) {
-						childRecords++;
-						// if we have a list, we also need to buffer (but at least we can reset the buffer after each successful record)
-						Integer maxOccurs = ((Record) child).getMaxOccurs();
-						// assume one occurrence
-						if (maxOccurs != null && !maxOccurs.equals(1)) {
-							shouldBuffer = true;
-							break;
-						}
-					}
-				}
-				// if we conclude that we don't need to buffer, we should still check if we allow partial matches and actually have multiple child records to choose from
-				if (!shouldBuffer) {
-					shouldBuffer = isPartialAllowed() && childRecords >= 2;
-				}
-			}
-			return shouldBuffer;
 		}
 
 		public Record resolve(List<Fragment> fragments) {
@@ -275,9 +237,6 @@ public class FlatBindingConfig extends BindingConfig {
 			if (getSeparatorLength() == null) {
 				setSeparatorLength(record.getSeparatorLength());
 			}
-			if (getAllowPartial() == null) {
-				setAllowPartial(record.getAllowPartial());
-			}
 			if (getMap() == null) {
 				setMap(record.getMap());
 			}
@@ -286,9 +245,9 @@ public class FlatBindingConfig extends BindingConfig {
 			}
 		}
 		
+		@Override
 		public Record clone() {
 			Record record = new Record();
-			record.setAllowPartial(isPartialAllowed());
 			record.setDescription(getDescription());
 			record.setMap(getMap());
 			record.setLength(getLength());
