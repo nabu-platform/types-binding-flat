@@ -131,7 +131,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		}
 		else {
 			trailing = unmarshal + toString(marked);
-			if (!trailing.isEmpty() && getConfig().getAllowTrailing() == null || !getConfig().getAllowTrailing()) {
+			if (!trailing.isEmpty() && (getConfig().getAllowTrailing() == null || !getConfig().getAllowTrailing())) {
 				throw new ParseException("Trailing characters not allowed: " + trailing, 0);
 			}
 			else {
