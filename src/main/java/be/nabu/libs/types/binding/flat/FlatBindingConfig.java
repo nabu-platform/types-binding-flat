@@ -40,11 +40,6 @@ public class FlatBindingConfig extends BindingConfig {
 		this.children = children;
 	}
 	
-	@XmlTransient
-	public boolean isAllowTrailing() {
-		return getAllowTrailing() != null && getAllowTrailing();
-	}
-	
 	@XmlAttribute
 	public String getTrailingMatch() {
 		return trailingMatch;
