@@ -183,10 +183,12 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			}
 			// limit in size & separator
 			if (fragment.getSeparatorLength() == null) {
-				delimited = new BackedDelimitedCharContainer(readable, fragment.getLength() == null ? 4096 : fragment.getLength() + separator.length(), separator);
+				Integer maxLength = fragment.getLength() == null ? fragment.getMaxLength() : fragment.getLength();
+				delimited = new BackedDelimitedCharContainer(readable, maxLength == null ? 4096 : maxLength + separator.length(), separator);
 			}
 			else {
-				delimited = new BackedDelimitedCharContainer(readable, fragment.getLength() == null ? 4096 : fragment.getLength() + fragment.getSeparatorLength(), separator, fragment.getSeparatorLength());
+				Integer maxLength = fragment.getLength() == null ? fragment.getMaxLength() : fragment.getLength();
+				delimited = new BackedDelimitedCharContainer(readable, maxLength == null ? 4096 : maxLength + fragment.getSeparatorLength(), separator, fragment.getSeparatorLength());
 			}
 			readable = delimited;
 		}
@@ -381,7 +383,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				// if we get here, it is possible the record was not read to the fullest (e.g. fixed length)
 				String remainder = toString(readable);
 				if (!remainder.isEmpty()) {
-					throw new ParseException("There are dangling characters at the end of the " + fragment + ": '" + remainder + "'", (int) alreadyRead);
+					throw new ParseException("There are " + remainder.length() + " dangling characters at the end of the " + fragment + ": '" + remainder + "'", (int) alreadyRead);
 				}
 				long hasActuallyRead = alreadyRead - initialRead;
 				// check any length set on the entire fragment
