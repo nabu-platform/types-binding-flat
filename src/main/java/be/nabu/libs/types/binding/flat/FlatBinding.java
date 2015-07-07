@@ -175,8 +175,8 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		// root records don't need delimits because they might go to the end etc
 		ReadableContainer<CharBuffer> readable = counting;
 		
-		if (fragment.getSeparator() != null) {
-			String separator = normalizeSeparator(fragment.getSeparator());
+		if (fragment.getParseSeparator() != null) {
+			String separator = normalizeSeparator(fragment.getParseSeparator());
 			// we need a maxlength to scan for
 			if (fragment.getMaxLength() != null) {
 				readable = IOUtils.limitReadable(readable, fragment.getMaxLength());
@@ -407,7 +407,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			Field field = (Field) fragment;
 			String value = toString(readable);
 			if (delimited != null && !delimited.isDelimiterFound() && !field.isCanEnd()) {
-				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' is delimited with '" + field.getSeparator() + "' but no separator was found and this field is not optional", (int) counting.getReadTotal()));
+				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' is delimited with '" + field.getParseSeparator() + "' but no separator was found and this field is not optional", (int) counting.getReadTotal()));
 				return null;
 			}
 			else if (field.getFixed() != null && !field.getFixed().equals(value)) {
@@ -560,8 +560,8 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		// you can have fixed fields not mapped from the source
 		else if (((Field) fragment).getFixed() != null) {
 			String value = ((Field) fragment).getFixed();
-			if (fragment.getSeparator() != null) {
-				value += normalizeSeparator(fragment.getSeparator());
+			if (fragment.getFormatSeparator() != null) {
+				value += normalizeSeparator(fragment.getFormatSeparator());
 			}
 			output.write(IOUtils.wrap(value));
 		}
@@ -634,8 +634,8 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 					}
 				}
 			}
-			if (fragment.getSeparator() != null) {
-				mappedValue += normalizeSeparator(fragment.getSeparator());
+			if (fragment.getFormatSeparator() != null) {
+				mappedValue += normalizeSeparator(fragment.getFormatSeparator());
 			}
 			output.write(IOUtils.wrap(mappedValue));
 		}
@@ -649,8 +649,8 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			}
 			marshal(counted, childFragment, content);
 		}
-		if (record.getSeparator() != null) {
-			output.write(IOUtils.wrap(normalizeSeparator(record.getSeparator())));
+		if (record.getFormatSeparator() != null) {
+			output.write(IOUtils.wrap(normalizeSeparator(record.getFormatSeparator())));
 		}
 		else if (record.getLength() != null) {
 			for (long i = counted.getWrittenTotal(); i < record.getLength(); i++) {

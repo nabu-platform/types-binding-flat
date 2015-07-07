@@ -229,6 +229,12 @@ public class FlatBindingConfig extends BindingConfig {
 			if (getSeparator() == null) {
 				setSeparator(record.getSeparator());
 			}
+			if (getFormatSeparator() == null) {
+				setFormatSeparator(record.getFormatSeparator());
+			}
+			if (getParseSeparator() == null) {
+				setParseSeparator(record.getParseSeparator());
+			}
 			if (getSeparatorLength() == null) {
 				setSeparatorLength(record.getSeparatorLength());
 			}
@@ -252,6 +258,8 @@ public class FlatBindingConfig extends BindingConfig {
 			record.setMinOccurs(getMinOccurs());
 			record.setChildren(new ArrayList<Fragment>(getChildren()));
 			record.setSeparator(getSeparator());
+			record.setParseSeparator(getParseSeparator());
+			record.setFormatSeparator(getFormatSeparator());
 			record.setSeparatorLength(getSeparatorLength());
 			record.setComplexType(getComplexType());
 			return record;
@@ -335,7 +343,7 @@ public class FlatBindingConfig extends BindingConfig {
 	
 	@XmlSeeAlso({ Record.class, Field.class })
 	abstract public static class Fragment {
-		private String separator;
+		private String separator, formatSeparator, parseSeparator;
 		private Integer separatorLength;
 		private String map;
 		private Integer length;
@@ -394,6 +402,21 @@ public class FlatBindingConfig extends BindingConfig {
 		}
 		public void setSeparatorLength(Integer separatorLength) {
 			this.separatorLength = separatorLength;
+		}
+
+		@XmlAttribute
+		public String getFormatSeparator() {
+			return formatSeparator == null ? getSeparator() : formatSeparator;
+		}
+		public void setFormatSeparator(String formatSeparator) {
+			this.formatSeparator = formatSeparator;
+		}
+		@XmlAttribute
+		public String getParseSeparator() {
+			return parseSeparator == null ? getSeparator() : parseSeparator;
+		}
+		public void setParseSeparator(String parseSeparator) {
+			this.parseSeparator = parseSeparator;
 		}
 		
 		@XmlTransient
