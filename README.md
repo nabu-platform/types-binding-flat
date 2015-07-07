@@ -232,8 +232,8 @@ Part of the overhead of the parsing is that the element has 57 fields in it. Sup
 
 Note that there are a few things that can heavily influence how fast the parser operates:
 
-- :read buffer: the default buffer size for a delimited container is set by length or maxLength. If neither is available, a default is used. A big buffer is faster for documents with a few large fields. However documents with a lot of small fields are better served by a small buffer
-- :regex separator: a regex seperator can be up to 5 times slower than a fixed one, especially in combination with a large read buffer as the regex needs to be checked on the entire buffer
+- **Read buffer**: the default buffer size for a delimited container is set by length or maxLength. If neither is available, a default is used. A big buffer is faster for documents with a few large fields. However documents with a lot of small fields are better served by a small buffer (as the remaining data has to be pushed back and forth many times in such a scenario)
+- **Regex separator**: a regex seperator can be up to 5 times slower than a fixed one, especially in combination with a large read buffer as the regex needs to be checked on the entire buffer
 
 # TODO
 
