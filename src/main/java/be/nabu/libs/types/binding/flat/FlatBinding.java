@@ -338,7 +338,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 					CountingReadableContainerImpl<CharBuffer> childCounting = new CountingReadableContainerImpl<CharBuffer>(readable, alreadyRead);
 					pushback = unmarshal(path, marked, eof, childCounting, child, content, windows);
 					if (pushback == null) {
-						counting.setReadTotal(initialRead);
+						counting.setReadTotal(alreadyRead);
 						int minRecordAmount = !(child instanceof Record) || ((Record) child).getMinOccurs() == null ? 1 : ((Record) child).getMinOccurs();
 						if (minRecordAmount != 0) {
 							messages.add(new ValidationMessage(Severity.ERROR, "Could not parse '" + child + "' in: " + fragment, (int) alreadyRead));
