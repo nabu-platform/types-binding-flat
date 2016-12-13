@@ -219,9 +219,9 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 					if (!(childElement.getType() instanceof ComplexType)) {
 						throw new ParseException("The record points to a child that is not complex", (int) alreadyRead);
 					}
-					Value<Integer> minOccurs = childElement.getProperty(new MinOccursProperty());
+					Value<Integer> minOccurs = childElement.getProperty(MinOccursProperty.getInstance());
 					int typeMinOccurs = minOccurs == null ? 1 : minOccurs.getValue();
-					Value<Integer> maxOccurs = childElement.getProperty(new MaxOccursProperty());
+					Value<Integer> maxOccurs = childElement.getProperty(MaxOccursProperty.getInstance());
 					int typeMaxOccurs = maxOccurs == null ? 1 : maxOccurs.getValue();
 					int recordCounter = 0;
 					int maxRecordAmount = ((Record) child).getMaxOccurs() == null ? typeMaxOccurs : ((Record) child).getMaxOccurs();
@@ -536,11 +536,11 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 				Object object = content.get(fragment.getMap());
 				if (object != null) {
 					Element<?> definition = content.getType().get(fragment.getMap());
-					Value<Integer> maxOccurs = definition.getProperty(new MaxOccursProperty());
+					Value<Integer> maxOccurs = definition.getProperty(MaxOccursProperty.getInstance());
 					// it's a list, we need to loop
 					if (maxOccurs != null && maxOccurs.getValue() != 1) {
 						CollectionHandlerProvider provider = collectionHandler.getHandler(object.getClass());
-						for (Object child : provider.getAsCollection(object)) {
+						for (Object child : provider.getAsIterable(object)) {
 							if (!(child instanceof ComplexContent)) {
 								child = new BeanInstance(child);
 							}
