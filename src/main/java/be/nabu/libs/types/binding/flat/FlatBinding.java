@@ -122,7 +122,8 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 		marked.mark();
 		ComplexContent newInstance = type.newInstance();
 		EOFReadableContainer<CharBuffer> eof = new EOFReadableContainer<CharBuffer>(marked);
-		String unmarshal = unmarshal(type.getName(), marked, eof, new CountingReadableContainerImpl<CharBuffer>(eof), record, newInstance, windows);
+		CountingReadableContainerImpl<CharBuffer> counting = new CountingReadableContainerImpl<CharBuffer>(eof);
+		String unmarshal = unmarshal(type.getName(), marked, eof, counting, record, newInstance, windows);
 		// nothing was parsed correctly
 		if (unmarshal == null) {
 			// everything is probably trailing, just remove it
@@ -130,6 +131,13 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			throw new ParseException("Could not parse anything: " + formatMessages(), 0);
 		}
 		else {
+			while (getConfig().getRepeat() != null && getConfig().getRepeat() && unmarshal != null && !eof.isEOF()) {
+				long alreadyRead = counting.getReadTotal() - unmarshal.length();
+				counting = new CountingReadableContainerImpl<CharBuffer>(eof);
+				counting.setReadTotal(alreadyRead);
+				marked.pushback(IOUtils.wrap(unmarshal));
+				unmarshal = unmarshal(type.getName(), marked, eof, counting, record, newInstance, windows);
+			}
 			trailing = unmarshal + toString(marked);
 			if (!trailing.isEmpty() && (getConfig().getAllowTrailing() == null || !getConfig().getAllowTrailing())) {
 				throw new ParseException("Trailing characters not allowed: " + trailing, 0);

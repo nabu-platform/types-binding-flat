@@ -26,7 +26,7 @@ public class FlatBindingConfig extends BindingConfig {
 	private List<Fragment> children;
 	private int maxLookAhead = 1024000;
 	private String record;
-	private Boolean allowTrailing;
+	private Boolean allowTrailing, repeat;
 	private String trailingMatch;
 	
 	@XmlElements({
@@ -54,6 +54,14 @@ public class FlatBindingConfig extends BindingConfig {
 	}
 	public void setAllowTrailing(Boolean allowTrailing) {
 		this.allowTrailing = allowTrailing;
+	}
+	
+	@XmlAttribute
+	public Boolean getRepeat() {
+		return repeat;
+	}
+	public void setRepeat(Boolean repeat) {
+		this.repeat = repeat;
 	}
 	
 	@XmlAttribute
