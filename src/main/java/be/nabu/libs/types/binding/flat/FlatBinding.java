@@ -254,7 +254,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 								}
 								// otherwise it might just not be a match, have the parent reset
 								else {
-									messages.add(new ValidationMessage(Severity.WARNING, "Parsing " + child.getMap() + " failed after: " + recordCounter + " of [" + minRecordAmount + ", " + maxRecordAmount + "] iterations", (int) alreadyRead));
+									messages.add(new ValidationMessage(Severity.WARNING, "Parsing " + child.getMap() + " failed after: " + recordCounter + " of [" + minRecordAmount + ", " + maxRecordAmount + "] iterations at " + (int) alreadyRead));
 									return null;
 								}
 							}
@@ -349,10 +349,10 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 						counting.setReadTotal(alreadyRead);
 						int minRecordAmount = !(child instanceof Record) || ((Record) child).getMinOccurs() == null ? 1 : ((Record) child).getMinOccurs();
 						if (minRecordAmount != 0) {
-							messages.add(new ValidationMessage(Severity.ERROR, "Could not parse '" + child + "' in: " + fragment, (int) alreadyRead));
+							messages.add(new ValidationMessage(Severity.ERROR, "Could not parse '" + child + "' in: " + fragment + " at " + (int) alreadyRead));
 							return null;
 						}
-						messages.add(new ValidationMessage(Severity.WARNING, "Could not parse '" + child + "' in: " + fragment, (int) alreadyRead));
+						messages.add(new ValidationMessage(Severity.WARNING, "Could not parse '" + child + "' in: " + fragment + " at " + (int) alreadyRead));
 						pushback = "";
 						marked.reset();
 						// reset the container to try the next fragment
@@ -417,15 +417,15 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 			Field field = (Field) fragment;
 			String value = toString(readable);
 			if (delimited != null && !delimited.isDelimiterFound() && !field.isCanEnd()) {
-				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' is delimited with '" + field.getParseSeparator() + "' but no separator was found and this field is not optional", (int) counting.getReadTotal()));
+				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' is delimited with '" + field.getParseSeparator() + "' but no separator was found and this field is not optional at " + (int) counting.getReadTotal()));
 				return null;
 			}
 			else if (field.getFixed() != null && !field.getFixed().equals(value)) {
-				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' does not have the correct fixed value, expecting '" + field.getFixed() + "', received '" + value + "'", (int) counting.getReadTotal()));
+				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' does not have the correct fixed value, expecting '" + field.getFixed() + "', received '" + value + "' at " + (int) counting.getReadTotal()));
 				return null;
 			}
 			else if (field.getMatch() != null && !value.matches(field.getMatch())) {
-				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' does not match the given regex, expecting match for '" + field.getMatch() + "', received '" + value + "'", (int) counting.getReadTotal()));
+				messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' does not match the given regex, expecting match for '" + field.getMatch() + "', received '" + value + "' at " + (int) counting.getReadTotal()));
 				return null;
 			}
 			if (field.getMap() != null) {
@@ -444,7 +444,7 @@ public class FlatBinding extends BaseConfigurableTypeBinding<FlatBindingConfig> 
 					}
 				}
 				if (field.getMinLength() != null && value.length() < field.getMinLength()) {
-					messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' does not have enough characters:" + value.length() + " < " + field.getMinLength(), (int) counting.getReadTotal()));
+					messages.add(new ValidationMessage(Severity.ERROR, "The field '" + field + "' does not have enough characters:" + value.length() + " < " + field.getMinLength() + " at " +  (int) counting.getReadTotal()));
 					return null;
 				}
 				Object unmarshalledValue = value;
